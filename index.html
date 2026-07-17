@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HFT Bot Instance Dashboard</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <main class="dashboard-container">
+      <!-- HEADER STATUS -->
+      <header class="dashboard-header">
+        <div class="header-left">
+          <h1 id="bot-title">BOT INSTANCE --</h1>
+          <div class="badge status-badge" id="conn-badge">
+            <span class="led led-red" id="conn-led"></span>
+            <span id="conn-text">DISCONNECTED</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <div class="metric-group">
+            <span class="metric-label">SYMBOL:</span>
+            <span class="metric-value highlight" id="symbol-display">--</span>
+          </div>
+          <div class="metric-group">
+            <span class="metric-label">INSTANCE ID:</span>
+            <span class="metric-value" id="instance-id-display">--</span>
+          </div>
+          <div class="metric-group">
+            <span class="metric-label">PORT:</span>
+            <span class="metric-value" id="port-display">--</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- TICKER REAL-TIME DISPLAY -->
+      <section class="ticker-strip">
+        <div class="ticker-card bid-card">
+          <span class="card-label">BID</span>
+          <span class="card-price" id="bid-val">--</span>
+        </div>
+        <div class="ticker-card ask-card">
+          <span class="card-label">ASK</span>
+          <span class="card-price" id="ask-val">--</span>
+        </div>
+        <div class="ticker-card spread-card">
+          <span class="card-label">SPREAD</span>
+          <span class="card-price" id="spread-val">--</span>
+        </div>
+        <div class="ticker-card speed-card">
+          <span class="card-label">FEED RATE</span>
+          <span class="card-price" id="feed-rate-val">0 Hz</span>
+        </div>
+      </section>
+
+      <!-- ORDER STATS STRIP -->
+      <section class="stats-strip">
+        <div class="stats-card success-card">
+          <span class="card-label">PLACED SUCCESS</span>
+          <span class="card-price" id="placed-success-val">0</span>
+        </div>
+        <div class="stats-card err-card">
+          <span class="card-label">PLACED FAILED</span>
+          <span class="card-price" id="placed-failed-val">0</span>
+        </div>
+        <div class="stats-card warn-card">
+          <span class="card-label">MODIFIED</span>
+          <span class="card-price" id="modified-val">0</span>
+        </div>
+        <div class="stats-card buy-sell-card">
+          <span class="card-label">BUYS / SELLS</span>
+          <span class="card-price" id="buy-sell-val">0 / 0</span>
+        </div>
+      </section>
+
+      <!-- WORKSPACE: CHART & RECENT MODIFICATIONS SIDE-BY-SIDE -->
+      <div class="main-workspace">
+        <!-- CHART AREA -->
+        <section class="chart-section">
+          <div class="section-header">
+            <h2>REAL-TIME MARKET FEED (BID/ASK)</h2>
+            <div class="chart-controls">
+              <label for="samples-select">SAMPLES:</label>
+              <select id="samples-select">
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="150" selected>150</option>
+                <option value="200">200</option>
+                <option value="300">300</option>
+              </select>
+            </div>
+          </div>
+          <div class="canvas-wrapper">
+            <canvas id="hft-chart"></canvas>
+          </div>
+        </section>
+
+        <!-- RECENT MODIFICATIONS -->
+        <section class="mods-section">
+          <div class="section-header">
+            <h2>RECENT MODIFICATIONS</h2>
+          </div>
+          <div class="mods-list" id="mods-list">
+            <div class="mod-row-placeholder">No modifications detected yet.</div>
+          </div>
+        </section>
+      </div>
+
+      <!-- METRICS & EVENTS LOG -->
+      <section class="log-section">
+        <div class="section-header">
+          <h2>BOT INPUTS & OUTPUTS (REAL-TIME EVENTS)</h2>
+          <button id="clear-log-btn">CLEAR</button>
+        </div>
+        <div class="log-console" id="log-console">
+          <div class="log-row info">Waiting for data stream...</div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
