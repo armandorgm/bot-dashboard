@@ -4,6 +4,7 @@ interface InstanceConfig {
   instance_id: string;
   symbol: string;
   port: string;
+  parent_api_port: string;
 }
 
 interface TickData {
@@ -13,7 +14,17 @@ interface TickData {
 }
 
 // Global state variables
+interface OrderEvent {
+  id: string;
+  timestamp: number;
+  side: 'buy' | 'sell';
+  price: number;
+  qty: number;
+  status: string;
+}
+
 let history: TickData[] = [];
+let orderEvents: OrderEvent[] = [];
 let maxPoints = 150;
 let tickTimes: number[] = [];
 let hz = 0;
@@ -44,7 +55,7 @@ let clearLogBtnEl: HTMLElement | null = null;
 let modsListEl: HTMLElement | null = null;
 
 // Getted config
-let config: InstanceConfig = { instance_id: "--", symbol: "--", port: "12001" };
+let config: InstanceConfig = { instance_id: "--", symbol: "--", port: "12001", parent_api_port: "8000" };
 
 // Log helper
 function addLog(text: string, type: 'info' | 'warn' | 'err' | 'success' = 'info') {
@@ -148,6 +159,17 @@ function drawChart() {
     return height - 25 - ((price - yMin) / yRange) * (height - 40);
   };
 
+  const getXForTime = (t: number) => {
+    if (history.length < 2) return -1;
+    const minT = history[0].time;
+    const maxT = history[history.length - 1].time;
+    if (maxT === minT) return -1;
+    let fraction = (t - minT) / (maxT - minT);
+    if (fraction > 1) fraction = 1;
+    const index = fraction * (history.length - 1);
+    return getX(index);
+  };
+
   // Draw shaded Spread Area
   ctx.fillStyle = 'rgba(59, 130, 246, 0.03)';
   ctx.beginPath();
@@ -180,6 +202,55 @@ function drawChart() {
     ctx.lineTo(getX(i), getY(history[i].ask));
   }
   ctx.stroke();
+
+  // Draw Order Events (Placements/Cancellations) on the chart
+  for (const evt of orderEvents) {
+    if (evt.timestamp < history[0].time) {
+      continue;
+    }
+
+    const x = getXForTime(evt.timestamp);
+    const y = getY(evt.price);
+
+    if (x >= 0 && x <= chartWidth && y >= 15 && y <= height - 25) {
+      let color = '#9ca3af';
+      let isCanceled = evt.status === 'canceled' || evt.status === 'expired';
+      
+      if (!isCanceled) {
+        color = evt.side === 'buy' ? '#10b981' : '#ef4444';
+      }
+      
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, 2 * Math.PI);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+
+      const displayId = evt.id ? (evt.id.length > 6 ? `...${evt.id.slice(-6)}` : evt.id) : '?';
+      let actionText = isCanceled ? `CXL #${displayId}` : `${evt.side.toUpperCase()} #${displayId}`;
+
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      const textWidth = ctx.measureText(actionText).width;
+      const bubbleWidth = textWidth + 8;
+      const bubbleHeight = 12;
+      const bubbleX = x + 8;
+      const bubbleY = y - 6;
+
+      ctx.fillStyle = 'rgba(3, 7, 18, 0.75)';
+      ctx.fillRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight);
+      
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight);
+
+      ctx.fillStyle = isCanceled ? '#d1d5db' : '#ffffff';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(actionText, bubbleX + 4, bubbleY + bubbleHeight / 2);
+    }
+  }
 
   // Current values indicators
   const latest = history[history.length - 1];
@@ -246,7 +317,7 @@ function connectWebSocket() {
           history.shift();
         }
         drawChart();
-      } 
+      }
       else if (payload.type === 'stats_update' && payload.data) {
         const d = payload.data;
         if (placedSuccessValEl) placedSuccessValEl.innerText = d.placed_success.toString();
@@ -260,16 +331,38 @@ function connectWebSocket() {
       else if (payload.type === 'order_update' && payload.data) {
         const d = payload.data;
         const msg = `[ORDER] ${d.side} ${d.qty} ${d.symbol} @ ${d.price} | Status: ${d.status} | Reason: ${d.reason || '-'}`;
-        addLog(msg, d.status === 'FILLED' ? 'success' : 'info');
+        addLog(msg, (d.status || '').toUpperCase() === 'FILLED' ? 'success' : 'info');
+
+        let priceVal = Number(d.price);
+        if ((!priceVal || priceVal <= 0) && history.length > 0) {
+          const latest = history[history.length - 1];
+          priceVal = d.side.toLowerCase() === 'buy' ? latest.bid : latest.ask;
+        }
+
+        orderEvents.push({
+          id: d.id || '',
+          timestamp: Date.now(),
+          side: (d.side || 'buy').toLowerCase() as 'buy' | 'sell',
+          price: priceVal,
+          qty: Number(d.qty || d.z || 0),
+          status: (d.status || '').toLowerCase()
+        });
+
+        if (orderEvents.length > 100) {
+          orderEvents.shift();
+        }
+        drawChart();
+      }
+      else if (payload.type === 'modifications_update' && payload.data) {
+        updateModificationsList(payload.data);
       }
       else {
-        // Log other dynamic events received or sent
         const type = payload.type || 'EVENT';
         const rawString = JSON.stringify(payload.data || payload);
         addLog(`[${type}] ${rawString}`, 'info');
       }
     } catch (e) {
-      // Ignored
+      console.error("Error parsing websocket message", e);
     }
   };
 
@@ -354,6 +447,45 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (clearLogBtnEl) {
     clearLogBtnEl.addEventListener("click", () => {
       if (logConsoleEl) logConsoleEl.innerHTML = "";
+    });
+  }
+
+  // Load initial chase behavior and set selector
+  const chaseSelectEl = document.getElementById("chase-behavior-select") as HTMLSelectElement | null;
+  if (chaseSelectEl) {
+    const parentPort = config.parent_api_port || "8000";
+    try {
+      const response = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${config.instance_id}/telemetry`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.chase_behavior) {
+          chaseSelectEl.value = data.chase_behavior;
+          addLog(`Initial chase behavior loaded: ${data.chase_behavior.toUpperCase()}`, 'info');
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to load initial chase behavior via telemetry endpoint.", err);
+    }
+
+    chaseSelectEl.addEventListener("change", async (e) => {
+      const val = (e.target as HTMLSelectElement).value;
+      const parentPort = config.parent_api_port || "8000";
+      addLog(`Changing chase behavior to ${val.toUpperCase()} in hot...`, 'info');
+      try {
+        const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${config.instance_id}/chase-behavior`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ behavior: val })
+        });
+        if (res.ok) {
+          addLog(`Successfully changed chase behavior to ${val.toUpperCase()} in hot!`, 'success');
+        } else {
+          const errData = await res.json().catch(() => ({ detail: res.statusText }));
+          addLog(`Failed to change chase behavior: ${errData.detail}`, 'err');
+        }
+      } catch (err) {
+        addLog(`Error updating chase behavior: ${err}`, 'err');
+      }
     });
   }
 
