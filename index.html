@@ -99,8 +99,9 @@
               </select>
             </div>
           </div>
-          <div class="canvas-wrapper">
+          <div class="canvas-wrapper" style="position: relative;">
             <canvas id="hft-chart"></canvas>
+            <div id="chart-tooltip" style="position: absolute; display: none; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 8px 12px; color: #e2e8f0; font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; box-shadow: 0 4px 12px rgba(0,0,0,0.5); pointer-events: none; z-index: 50; max-width: 280px; white-space: pre-wrap;"></div>
           </div>
         </section>
 
@@ -114,6 +115,20 @@
           </div>
         </section>
       </div>
+
+      <!-- OPEN ORDERS -->
+      <section class="open-orders-section">
+        <div class="section-header">
+          <h2>OPEN ORDERS</h2>
+          <span style="font-size: 0.75rem; color: var(--text-secondary); font-family: var(--font-mono);">SYNCED WITH EXCHANGE DELEGATE</span>
+        </div>
+        <div class="open-orders-table-wrapper" id="open-orders-wrapper">
+          <div class="open-orders-empty">
+            <span>📭</span>
+            <span>No open orders on the grid.</span>
+          </div>
+        </div>
+      </section>
 
       <!-- METRICS & EVENTS LOG -->
       <section class="log-section">
