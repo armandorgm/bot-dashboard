@@ -553,6 +553,10 @@ function connectBinancePublicWs(symbol: string) {
     try {
       const data = JSON.parse(event.data);
       if (!data) return;
+      // Diagnostic Log: prints tick count or contents
+      if (Math.random() < 0.05) {
+        addLog(`[PUBLIC TICK DIAG] Bid: ${data.b} | Ask: ${data.a}`, 'info');
+      }
 
       const bidVal = Number(data.b);
       const askVal = Number(data.a);
@@ -1068,6 +1072,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     await listen("binance-rust-log", (event) => {
       addLog(event.payload as string, 'info');
     });
+
+    // Trigger asynchronous stream initialization in Rust Core now that listeners are ready
+    await invoke("start_private_stream");
   } catch (err) {
     addLog(`Error fetching instance variables: ${err}`, 'err');
   }
@@ -1255,6 +1262,7 @@ function updateModificationsList(mods: ModificationInfo[]) {
  */
 function handleBinancePrivateEvent(rawData: string) {
   try {
+    addLog(`[PRIVATE DIRECT RX] Payload: ${rawData.slice(0, 150)}...`, 'success');
     // ── Diagnostic Marker Injector ──
     // This forces a visual blue query dot on the chart for EVERY message received from Rust Core
     // to visually confirm that the communication channel works.

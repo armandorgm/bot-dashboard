@@ -64,50 +64,19 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
         Err(_) => reqwest::Client::new(),
     };
 
+    let parent_port = env::var("PARENT_API_PORT").unwrap_or_else(|_| "8000".to_string());
+    let listen_key_url = format!("http://127.0.0.1:{}/api/orders/listen-key", parent_port);
+
     loop {
-        let api_key = match env::var("BINANCE_API_KEY2") {
-            Ok(val) => val,
-            Err(_) => {
-                let err_msg = "[Rust WS] ERROR: BINANCE_API_KEY2 no encontrada en .env. Verifica que el archivo .env exista en la raiz de bot-dashboard y tenga esta clave. Reintentando verificar en 5s...".to_string();
-                eprintln!("{}", err_msg);
-                let _ = app_handle.emit("binance-rust-log", err_msg);
-                sleep(Duration::from_secs(5)).await;
-                continue;
-            }
-        };
+        let _ = app_handle.emit("binance-rust-log", format!("[Rust WS] Solicitando listenKey mediante Proxy Python local a {}...", listen_key_url));
 
-        let is_testnet = env::var("TESTNET")
-            .unwrap_or_else(|_| "false".to_string())
-            .trim()
-            .to_lowercase() == "true";
-
-    let rest_base = if is_testnet {
-        "https://testnet.binancefuture.com"
-    } else {
-        "https://fstream.binance.com"
-    };
-
-    let ws_base = if is_testnet {
-        "wss://testnet.binancefuture.com/ws"
-    } else {
-        "wss://fstream.binance.com/ws"
-    };
-
-    let init_msg = format!("[Rust WS] Inicializando flujo privado en {} (Testnet={})", rest_base, is_testnet);
-    println!("{}", init_msg);
-    let _ = app_handle.emit("binance-rust-log", init_msg);
-
-    let listen_key_url = format!("{}/fapi/v1/listenKey", rest_base);
-    let _ = app_handle.emit("binance-rust-log", format!("[Rust WS] Solicitando listenKey a {}...", listen_key_url));
-
-        let res = match client.post(&listen_key_url)
-            .header("X-MBX-APIKEY", &api_key)
+        let res = match client.get(&listen_key_url)
             .send()
             .await 
         {
             Ok(r) => r,
             Err(e) => {
-                let err_msg = format!("[Rust WS] ERROR al pedir listenKey: {}. Reintentando en 10s...", e);
+                let err_msg = format!("[Rust WS] ERROR al pedir listenKey por Proxy: {}. ¿El bot de Python está encendido? Reintentando en 10s...", e);
                 eprintln!("{}", err_msg);
                 let _ = app_handle.emit("binance-rust-log", err_msg);
                 sleep(Duration::from_secs(10)).await;
@@ -118,7 +87,7 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
         if !res.status().is_success() {
             let status = res.status();
             let body = res.text().await.unwrap_or_default();
-            let err_msg = format!("[Rust WS] ERROR HTTP de listenKey ({}): {}. Reintentando en 10s...", status, body);
+            let err_msg = format!("[Rust WS] ERROR HTTP de listenKey mediante Proxy ({}): {}. Reintentando en 10s...", status, body);
             eprintln!("{}", err_msg);
             let _ = app_handle.emit("binance-rust-log", err_msg);
             sleep(Duration::from_secs(10)).await;
@@ -129,12 +98,13 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
         struct ListenKeyResponse {
             #[serde(rename = "listenKey")]
             listen_key: String,
+            is_testnet: bool,
         }
 
         let lk_res: ListenKeyResponse = match res.json().await {
             Ok(json) => json,
             Err(e) => {
-                let err_msg = format!("[Rust WS] ERROR al deserializar listenKey JSON: {}. Reintentando en 10s...", e);
+                let err_msg = format!("[Rust WS] ERROR al deserializar listenKey JSON del Proxy: {}. Reintentando en 10s...", e);
                 eprintln!("{}", err_msg);
                 let _ = app_handle.emit("binance-rust-log", err_msg);
                 sleep(Duration::from_secs(10)).await;
@@ -143,38 +113,21 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
         };
 
         let listen_key = lk_res.listen_key;
+        let is_testnet = lk_res.is_testnet;
+
+        let ws_base = if is_testnet {
+            "wss://testnet.binancefuture.com/ws"
+        } else {
+            "wss://fstream.binance.com/ws"
+        };
+
+        let init_msg = format!("[Rust WS] Inicializando flujo privado en {} (is_testnet={})", ws_base, is_testnet);
+        println!("{}", init_msg);
+        let _ = app_handle.emit("binance-rust-log", init_msg);
+
         let success_lk = format!("[Rust WS] listenKey obtenido con éxito: {}...", &listen_key[..std::cmp::min(10, listen_key.len())]);
         println!("{}", success_lk);
         let _ = app_handle.emit("binance-rust-log", success_lk);
-
-        let client_clone = client.clone();
-        let api_key_clone = api_key.clone();
-        let listen_key_clone = listen_key.clone();
-        let listen_key_url_clone = listen_key_url.clone();
-        
-        let app_handle_ping = app_handle.clone();
-        let keep_alive_handle = tauri::async_runtime::spawn(async move {
-            loop {
-                sleep(Duration::from_secs(30 * 60)).await;
-                let _ = app_handle_ping.emit("binance-rust-log", "[Rust WS] Enviando keepalive ping de listenKey...".to_string());
-                let ping_res = client_clone.put(&listen_key_url_clone)
-                    .header("X-MBX-APIKEY", &api_key_clone)
-                    .query(&[("listenKey", &listen_key_clone)])
-                    .send()
-                    .await;
-                match ping_res {
-                    Ok(r) if r.status().is_success() => {
-                        let _ = app_handle_ping.emit("binance-rust-log", "[Rust WS] Keepalive de listenKey exitoso.".to_string());
-                    }
-                    Ok(r) => {
-                        let _ = app_handle_ping.emit("binance-rust-log", format!("[Rust WS] ADVERTENCIA: keepalive falló con estado: {}", r.status()));
-                    }
-                    Err(e) => {
-                        let _ = app_handle_ping.emit("binance-rust-log", format!("[Rust WS] ADVERTENCIA: keepalive falló por red: {}", e));
-                    }
-                }
-            }
-        });
 
         let ws_url = format!("{}/{}", ws_base, listen_key);
         let connect_msg = format!("[Rust WS] Conectando al WebSocket de usuario: {}...", ws_url);
@@ -187,7 +140,6 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
                 let err_msg = format!("[Rust WS] ERROR al conectar WebSocket: {}. Reintentando en 10s...", e);
                 eprintln!("{}", err_msg);
                 let _ = app_handle.emit("binance-rust-log", err_msg);
-                keep_alive_handle.abort();
                 sleep(Duration::from_secs(10)).await;
                 continue;
             }
@@ -218,7 +170,6 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
             }
         }
 
-        keep_alive_handle.abort();
         let disc_msg = "[Rust WS] Desconectado. Reconectando en 5s...".to_string();
         println!("{}", disc_msg);
         let _ = app_handle.emit("binance-rust-log", disc_msg);
@@ -226,18 +177,65 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
     }
 }
 
+#[tauri::command]
+fn start_private_stream(app_handle: AppHandle) {
+    let handle = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        start_binance_private_stream(handle).await;
+    });
+
+    // ── Diagnostic Simulator (Mitad B) ──
+    // Emits a mock Binance payload to the frontend every 10 seconds 
+    // to isolate and verify the IPC event boundary.
+    let handle_sim = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            sleep(Duration::from_secs(10)).await;
+            let mock_payload = r#"{
+                "e": "ORDER_TRADE_UPDATE",
+                "E": 1672531199000,
+                "o": {
+                    "s": "1000PEPEUSDC",
+                    "c": "test_client_order_id",
+                    "S": "BUY",
+                    "o": "LIMIT",
+                    "f": "GTC",
+                    "q": "1000",
+                    "p": "0.0028800",
+                    "ap": "0.0028800",
+                    "sp": "0.0000000",
+                    "x": "NEW",
+                    "X": "NEW",
+                    "i": 999999,
+                    "l": "0",
+                    "z": "0",
+                    "L": "0",
+                    "n": "0",
+                    "N": "USDT",
+                    "T": 1672531199000,
+                    "t": -1,
+                    "b": "2.88",
+                    "a": "2.88",
+                    "m": false,
+                    "R": false,
+                    "wt": "CONTRACT_PRICE",
+                    "ot": "LIMIT",
+                    "ps": "LONG",
+                    "cp": false,
+                    "rp": "0"
+                }
+            }"#;
+            let _ = handle_sim.emit("binance-rust-log", "[Rust Sim] Emitiendo evento ORDER_TRADE_UPDATE ficticio de prueba...".to_string());
+            let _ = handle_sim.emit("binance-private-event", mock_payload.to_string());
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_instance_config])
-        .setup(|app| {
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                start_binance_private_stream(handle).await;
-            });
-            Ok(())
-        })
+        .invoke_handler(tauri::generate_handler![get_instance_config, start_private_stream])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
