@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+
 interface InstanceConfig {
   instance_id: string;
   symbol: string;
@@ -96,7 +97,6 @@ function setDataSource(key: DataSourceKey, enabled: boolean) {
   if (sw && sw.checked !== enabled) sw.checked = enabled;
 }
 
-
 // DOM references
 let botTitleEl: HTMLElement | null = null;
 let connBadgeEl: HTMLElement | null = null;
@@ -170,13 +170,14 @@ function formatNum(num: number, decimals: number = 6): string {
 // Chart drawing
 function drawChart() {
   if (!canvasEl) return;
+  if (!dataSourceFlags.chart) return; // 🔴 CHART RENDER OFF — canvas frozen
   const ctx = canvasEl.getContext('2d');
   if (!ctx) return;
 
-  const width = canvasEl.width;
+  const width  = canvasEl.width;
   const height = canvasEl.height;
 
-  // Fondo premium ultra oscuro
+  // ── Background ──────────────────────────────────────────────────────────
   ctx.fillStyle = '#060913';
   ctx.fillRect(0, 0, width, height);
 
@@ -189,7 +190,7 @@ function drawChart() {
     return;
   }
 
-  // ── Auto-fit data range (ignoring manual yCenter/yRange) ──────────────────
+  // ── Auto-fit data range (ignoring manual yCenter/yRange) ────────────────
   let dataMin = Infinity;
   let dataMax = -Infinity;
   for (const pt of history) {
@@ -198,7 +199,7 @@ function drawChart() {
   }
   if (dataMin === Infinity || dataMax === -Infinity) { dataMin = 0; dataMax = 0.004; }
 
-  // ── Linear Y scale ────────────────────────────────────────────────────────
+  // ── Linear Y scale ──────────────────────────────────────────────────────
   // If user has never dragged: auto-fit with 10% padding on each side.
   const autoHalf   = (dataMax - dataMin) * 0.6 || dataMin * 0.05 || 0.0001;
   const autoCenter = (dataMax + dataMin) / 2;
@@ -216,7 +217,58 @@ function drawChart() {
   const chartBottom = height - 35;
   const chartH      = chartBottom - chartTop;
 
-  // ── Grid lines (horizontal) ───────────────────────────────────────────────
+  // Linear mappers ─────────────────────────────────────────────────────────
+  const getX = (index: number) => {
+    return index * (chartWidth / (maxPoints - 1));
+  };
+
+  const getY = (price: number) => {
+    return chartBottom - ((price - yMin) / ySpan) * chartH;
+  };
+
+  const getXForTime = (time: number) => {
+    if (history.length === 0) return 0;
+    if (time <= history[0].time) return getX(0);
+    if (time >= history[history.length - 1].time) return getX(history.length - 1);
+    for (let i = 0; i < history.length - 1; i++) {
+      const t0 = history[i].time;
+      const t1 = history[i + 1].time;
+      if (time >= t0 && time <= t1) {
+        const ratio = (time - t0) / (t1 - t0);
+        return getX(i + ratio);
+      }
+    }
+    return getX(history.length - 1);
+  };
+
+  // ── Y-axis drag handle highlight ─────────────────────────────────────────
+  ctx.fillStyle = yDragActive
+    ? 'rgba(99, 102, 241, 0.10)'
+    : 'rgba(99, 102, 241, 0.03)';
+  ctx.fillRect(chartWidth, 0, rightMargin, height);
+
+  const gripX = chartWidth + rightMargin / 2;
+  const gripY = height / 2;
+  ctx.strokeStyle = yDragActive
+    ? 'rgba(129, 140, 248, 0.7)'
+    : 'rgba(99, 102, 241, 0.25)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([]);
+  for (const offset of [-5, 0, 5]) {
+    ctx.beginPath();
+    ctx.moveTo(gripX - 10, gripY + offset);
+    ctx.lineTo(gripX + 10, gripY + offset);
+    ctx.stroke();
+  }
+  ctx.fillStyle = yDragActive
+    ? 'rgba(129, 140, 248, 0.9)'
+    : 'rgba(99, 102, 241, 0.35)';
+  ctx.font = '7px "JetBrains Mono", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('↕ DRAG', gripX, gripY + 18);
+
+  // ── Grid lines (horizontal) ──────────────────────────────────────────────
   const decimals = config.symbol.toLowerCase().includes('pepe') ? 8 : 4;
   const gridCount = 5;
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)';
@@ -239,169 +291,101 @@ function drawChart() {
     ctx.fillText(priceVal.toFixed(decimals), chartWidth + 6, y);
   }
 
-  // Linear mappers ───────────────────────────────────────────────────────────
-  const getX = (index: number) => {
-    return index * (chartWidth / (maxPoints - 1));
-  };
-
-  const getY = (price: number) => {
-    return chartBottom - ((price - yMin) / ySpan) * chartH;
-  };
-
-  // Helper to calculate X for a given timestamp
-  const getXForTime = (time: number) => {
-    if (history.length === 0) return 0;
-    if (time <= history[0].time) return getX(0);
-    if (time >= history[history.length - 1].time) return getX(history.length - 1);
-    
-    for (let i = 0; i < history.length - 1; i++) {
-      const t0 = history[i].time;
-      const t1 = history[i + 1].time;
-      if (time >= t0 && time <= t1) {
-        const ratio = (time - t0) / (t1 - t0);
-        return getX(i + ratio);
-      }
-    }
-    return getX(history.length - 1);
-  };
-
-  // 1. Dibujar área de Spread sombreada
+  // ── 1. Spread shaded area ────────────────────────────────────────────────
   ctx.fillStyle = 'rgba(59, 130, 246, 0.05)';
   ctx.beginPath();
   ctx.moveTo(getX(0), getY(history[0].bid));
-  for (let i = 1; i < history.length; i++) {
-    ctx.lineTo(getX(i), getY(history[i].bid));
-  }
-  for (let i = history.length - 1; i >= 0; i--) {
-    ctx.lineTo(getX(i), getY(history[i].ask));
-  }
+  for (let i = 1; i < history.length; i++) ctx.lineTo(getX(i), getY(history[i].bid));
+  for (let i = history.length - 1; i >= 0; i--) ctx.lineTo(getX(i), getY(history[i].ask));
   ctx.closePath();
   ctx.fill();
 
-  // 2. Dibujar línea de Bid (Verde HFT)
+  // ── 2. Bid line (green) ──────────────────────────────────────────────────
   ctx.strokeStyle = '#10b981';
   ctx.lineWidth = 1.5;
+  ctx.setLineDash([]);
   ctx.beginPath();
   ctx.moveTo(getX(0), getY(history[0].bid));
-  for (let i = 1; i < history.length; i++) {
-    ctx.lineTo(getX(i), getY(history[i].bid));
-  }
+  for (let i = 1; i < history.length; i++) ctx.lineTo(getX(i), getY(history[i].bid));
   ctx.stroke();
 
-  // 3. Dibujar línea de Ask (Rojo HFT)
+  // ── 3. Ask line (red) ────────────────────────────────────────────────────
   ctx.strokeStyle = '#ef4444';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(getX(0), getY(history[0].ask));
-  for (let i = 1; i < history.length; i++) {
-    ctx.lineTo(getX(i), getY(history[i].ask));
-  }
+  for (let i = 1; i < history.length; i++) ctx.lineTo(getX(i), getY(history[i].ask));
   ctx.stroke();
 
-  // 4. Calcular y dibujar eventos HFT con clustering (solo queries) y offsets ante solapamiento
+  // ── 4. HFT event markers ─────────────────────────────────────────────────
   const tMin = history[0].time;
   const tMax = history[history.length - 1].time;
   const visibleEvents = hftEvents.filter(e => e.time >= tMin && e.time <= tMax);
-
-  const queryEvents = visibleEvents.filter(e => e.type === 'query');
+  const queryEvents   = visibleEvents.filter(e => e.type === 'query');
   const tradingEvents = visibleEvents.filter(e => e.type !== 'query');
 
   activeMarkers = [];
-  const clusterRadius = 12; // pixels
+  const clusterRadius = 12;
 
-  // 1. Cluster de consultas HTTP genéricas (queries) en la barra superior
   for (const evt of queryEvents) {
     const x = getXForTime(evt.time);
-    const y = 25; // fixed top track
     let merged = false;
     for (const marker of activeMarkers) {
-      const dx = Math.abs(marker.x - x);
-      if (dx < clusterRadius && marker.events[0].type === 'query') {
-        marker.events.push(evt);
-        merged = true;
-        break;
+      if (Math.abs(marker.x - x) < clusterRadius && marker.events[0].type === 'query') {
+        marker.events.push(evt); merged = true; break;
       }
     }
-    if (!merged) {
-      activeMarkers.push({ x, y, events: [evt] });
-    }
+    if (!merged) activeMarkers.push({ x, y: 25, events: [evt] });
   }
 
-  // 2. Colocación de eventos de trading individuales sin clústeres, usando un offset horizontal acumulativo ante solapamientos
   const positionOccupancy: Record<string, number> = {};
-
   for (const evt of tradingEvents) {
     let x = getXForTime(evt.time);
-    let y = 0;
-    if (evt.price) {
-      y = getY(evt.price);
-    } else {
-      y = height / 2;
-    }
-
-    // Cuantización de tiempo (500ms) y precio estable para evitar parpadeos
-    const bucketTime = Math.round(evt.time / 500) * 500;
-    const bucketPrice = evt.price || 0;
-    const key = `${bucketTime},${bucketPrice}`;
+    const y = evt.price ? getY(evt.price) : height / 2;
+    const key = `${Math.round(evt.time / 500) * 500},${evt.price || 0}`;
     const occupancy = positionOccupancy[key] || 0;
     positionOccupancy[key] = occupancy + 1;
-
-    const offsetX = occupancy * 10;
-    x = x + offsetX;
-
-    activeMarkers.push({ x, y, events: [evt] });
+    activeMarkers.push({ x: x + occupancy * 10, y, events: [evt] });
   }
 
-  // 3. Dibujar líneas rectas discontinuas de precios de órdenes desde su creación (placed) hasta su cierre (fill o cancel)
+  // ── 5. Order price level lines (dashed) ──────────────────────────────────
   hftEvents.forEach((placedEvt) => {
-    if (placedEvt.type === 'buy_placed' || placedEvt.type === 'sell_placed') {
-      const orderId = placedEvt.orderId;
-      if (!orderId) return;
-
-      // Buscar el evento de cierre correspondiente en todo el historial
-      const closingEvt = hftEvents.find(
-        (e) =>
-          e.orderId !== undefined &&
-          String(e.orderId) === String(orderId) &&
-          ['buy', 'sell', 'cancel', 'cancel_buy', 'cancel_sell', 'cancel_buy_failed', 'cancel_sell_failed'].includes(e.type) &&
-          e.time >= placedEvt.time
-      );
-
-      const tStart = placedEvt.time;
-      const tEnd = closingEvt ? closingEvt.time : tMax;
-
-      // Dibujar si la línea intersecta la ventana de tiempo visible
-      if (tEnd >= tMin && tStart <= tMax) {
-        const xStart = getXForTime(Math.max(tStart, tMin));
-        const xEnd = getXForTime(Math.min(tEnd, tMax));
-        const yVal = getY(placedEvt.price || 0);
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.setLineDash([4, 4]);
-        ctx.lineWidth = 1.0;
-        ctx.strokeStyle = placedEvt.type === 'buy_placed' ? 'rgba(16, 185, 129, 0.45)' : 'rgba(239, 68, 68, 0.45)';
-        ctx.moveTo(xStart, yVal);
-        ctx.lineTo(xEnd, yVal);
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
+    if (placedEvt.type !== 'buy_placed' && placedEvt.type !== 'sell_placed') return;
+    const orderId = placedEvt.orderId;
+    if (!orderId) return;
+    const closingEvt = hftEvents.find(
+      e => e.orderId !== undefined &&
+           String(e.orderId) === String(orderId) &&
+           ['buy','sell','cancel','cancel_buy','cancel_sell','cancel_buy_failed','cancel_sell_failed'].includes(e.type) &&
+           e.time >= placedEvt.time
+    );
+    const tStart = placedEvt.time;
+    const tEnd   = closingEvt ? closingEvt.time : tMax;
+    if (tEnd < tMin || tStart > tMax) return;
+    const xStart = getXForTime(Math.max(tStart, tMin));
+    const xEnd   = getXForTime(Math.min(tEnd,   tMax));
+    const yVal   = getY(placedEvt.price || 0);
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1.0;
+    ctx.strokeStyle = placedEvt.type === 'buy_placed' ? 'rgba(16,185,129,0.45)' : 'rgba(239,68,68,0.45)';
+    ctx.beginPath();
+    ctx.moveTo(xStart, yVal);
+    ctx.lineTo(xEnd, yVal);
+    ctx.stroke();
+    ctx.restore();
   });
 
-  // Dibujar marcadores de eventos
+  // ── 6. Draw event markers ────────────────────────────────────────────────
   for (const m of activeMarkers) {
     if (m.events.length > 1) {
-      // Draw cluster marker
       ctx.beginPath();
       ctx.arc(m.x, m.y, 8, 0, 2 * Math.PI);
-      ctx.fillStyle = '#4f46e5'; // Premium indigo cluster
+      ctx.fillStyle = '#4f46e5';
       ctx.fill();
       ctx.strokeStyle = '#818cf8';
       ctx.lineWidth = 1.5;
       ctx.stroke();
-
-      // Draw count text
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 8px "JetBrains Mono", monospace';
       ctx.textAlign = 'center';
@@ -409,254 +393,199 @@ function drawChart() {
       ctx.fillText(m.events.length.toString(), m.x, m.y);
     } else {
       const evt = m.events[0];
-      
       if (evt.type === 'buy') {
-        // Draw green triangle pointing up
-        ctx.beginPath();
-        ctx.moveTo(m.x, m.y - 6);
-        ctx.lineTo(m.x - 5, m.y + 4);
-        ctx.lineTo(m.x + 5, m.y + 4);
-        ctx.closePath();
-        ctx.fillStyle = '#10b981';
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 0.5;
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(m.x, m.y - 6); ctx.lineTo(m.x - 5, m.y + 4); ctx.lineTo(m.x + 5, m.y + 4); ctx.closePath();
+        ctx.fillStyle = '#10b981'; ctx.fill(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.5; ctx.stroke();
       } else if (evt.type === 'buy_placed') {
-        // Draw hollow green triangle pointing up
-        ctx.beginPath();
-        ctx.moveTo(m.x, m.y - 6);
-        ctx.lineTo(m.x - 5, m.y + 4);
-        ctx.lineTo(m.x + 5, m.y + 4);
-        ctx.closePath();
-        ctx.strokeStyle = '#10b981';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
-        ctx.fill();
+        ctx.beginPath(); ctx.moveTo(m.x, m.y - 6); ctx.lineTo(m.x - 5, m.y + 4); ctx.lineTo(m.x + 5, m.y + 4); ctx.closePath();
+        ctx.strokeStyle = '#10b981'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.fillStyle = 'rgba(16,185,129,0.15)'; ctx.fill();
       } else if (evt.type === 'sell') {
-        // Draw red triangle pointing down
-        ctx.beginPath();
-        ctx.moveTo(m.x, m.y + 6);
-        ctx.lineTo(m.x - 5, m.y - 4);
-        ctx.lineTo(m.x + 5, m.y - 4);
-        ctx.closePath();
-        ctx.fillStyle = '#ef4444';
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 0.5;
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(m.x, m.y + 6); ctx.lineTo(m.x - 5, m.y - 4); ctx.lineTo(m.x + 5, m.y - 4); ctx.closePath();
+        ctx.fillStyle = '#ef4444'; ctx.fill(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.5; ctx.stroke();
       } else if (evt.type === 'sell_placed') {
-        // Draw hollow red triangle pointing down
-        ctx.beginPath();
-        ctx.moveTo(m.x, m.y + 6);
-        ctx.lineTo(m.x - 5, m.y - 4);
-        ctx.lineTo(m.x + 5, m.y - 4);
-        ctx.closePath();
-        ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
-        ctx.fill();
+        ctx.beginPath(); ctx.moveTo(m.x, m.y + 6); ctx.lineTo(m.x - 5, m.y - 4); ctx.lineTo(m.x + 5, m.y - 4); ctx.closePath();
+        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.fillStyle = 'rgba(239,68,68,0.15)'; ctx.fill();
       } else if (evt.type === 'cancel' || evt.type === 'cancel_buy' || evt.type === 'cancel_sell') {
-        // Draw color-coded cross
-        const crossColor = evt.type === 'cancel_buy' ? '#10b981' : evt.type === 'cancel_sell' ? '#ef4444' : '#f59e0b';
-        ctx.strokeStyle = crossColor;
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.moveTo(m.x - 4, m.y - 4);
-        ctx.lineTo(m.x + 4, m.y + 4);
-        ctx.moveTo(m.x + 4, m.y - 4);
-        ctx.lineTo(m.x - 4, m.y + 4);
-        ctx.stroke();
+        const cc = evt.type === 'cancel_buy' ? '#10b981' : evt.type === 'cancel_sell' ? '#ef4444' : '#f59e0b';
+        ctx.strokeStyle = cc; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(m.x-4,m.y-4); ctx.lineTo(m.x+4,m.y+4); ctx.moveTo(m.x+4,m.y-4); ctx.lineTo(m.x-4,m.y+4); ctx.stroke();
       } else if (evt.type === 'cancel_failed' || evt.type === 'cancel_buy_failed' || evt.type === 'cancel_sell_failed') {
-        // Draw color-coded cross with red warning circle (aro rojo)
-        const crossColor = evt.type === 'cancel_buy_failed' ? '#10b981' : '#ef4444';
-        ctx.strokeStyle = crossColor;
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.moveTo(m.x - 5, m.y - 5);
-        ctx.lineTo(m.x + 5, m.y + 5);
-        ctx.moveTo(m.x + 5, m.y - 5);
-        ctx.lineTo(m.x - 5, m.y + 5);
-        ctx.stroke();
-
-        // Red outer warning circle (aro rojo)
-        ctx.beginPath();
-        ctx.arc(m.x, m.y, 8, 0, 2 * Math.PI);
-        ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+        const cc = evt.type === 'cancel_buy_failed' ? '#10b981' : '#ef4444';
+        ctx.strokeStyle = cc; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(m.x-5,m.y-5); ctx.lineTo(m.x+5,m.y+5); ctx.moveTo(m.x+5,m.y-5); ctx.lineTo(m.x-5,m.y+5); ctx.stroke();
+        ctx.beginPath(); ctx.arc(m.x, m.y, 8, 0, 2 * Math.PI); ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5; ctx.stroke();
       } else if (evt.type === 'query') {
-        // Draw blue query circle
-        ctx.beginPath();
-        ctx.arc(m.x, m.y, 4, 0, 2 * Math.PI);
-        ctx.fillStyle = '#60a5fa';
-        ctx.fill();
-        ctx.strokeStyle = '#3b82f6';
-        ctx.stroke();
+        ctx.beginPath(); ctx.arc(m.x, m.y, 4, 0, 2 * Math.PI);
+        ctx.fillStyle = '#60a5fa'; ctx.fill(); ctx.strokeStyle = '#3b82f6'; ctx.stroke();
       }
     }
   }
 
-  // Current values indicators (Right Y axis tags)
+  // ── 7. Right Y-axis price flags (Bid / Ask) ──────────────────────────────
   const latest = history[history.length - 1];
-  const yBid = getY(latest.bid);
-  const yAsk = getY(latest.ask);
-  const decimals = config.symbol.toLowerCase().includes("pepe") ? 8 : 4;
+  const yBid   = getY(latest.bid);
+  const yAsk   = getY(latest.ask);
 
-  // Bid flag
+  ctx.font = 'bold 8px "JetBrains Mono", monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+
   ctx.fillStyle = '#10b981';
   ctx.fillRect(chartWidth + 3, yBid - 7, rightMargin - 6, 14);
   ctx.fillStyle = '#030712';
-  ctx.font = 'bold 8px "JetBrains Mono", monospace';
   ctx.fillText(`B: ${latest.bid.toFixed(decimals)}`, chartWidth + 6, yBid);
 
-  // Ask flag
   ctx.fillStyle = '#ef4444';
   ctx.fillRect(chartWidth + 3, yAsk - 7, rightMargin - 6, 14);
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 8px "JetBrains Mono", monospace';
   ctx.fillText(`A: ${latest.ask.toFixed(decimals)}`, chartWidth + 6, yAsk);
 
-  // Barra de Telemetría inferior
+  // ── 8. Telemetry bar ─────────────────────────────────────────────────────
   ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
   ctx.fillRect(0, height - 22, width, 22);
-  
   ctx.fillStyle = '#94a3b8';
   ctx.font = '10px "JetBrains Mono", monospace';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   const spread = latest.ask - latest.bid;
+  const zoomLabel = yRange !== null ? ` | ZOOM: ${(autoHalf / yHalf).toFixed(1)}x` : '';
   ctx.fillText(
-    `SPREAD: ${spread.toFixed(decimals)} | MIN: ${minVal.toFixed(decimals)} | MAX: ${maxVal.toFixed(decimals)} | MOTOR: ${hz} Hz | MUESTRAS: ${history.length}/${maxPoints}`,
-    10,
-    height - 11
+    `SPREAD: ${spread.toFixed(decimals)} | MIN: ${dataMin.toFixed(decimals)} | MAX: ${dataMax.toFixed(decimals)} | MOTOR: ${hz} Hz | MUESTRAS: ${history.length}/${maxPoints}${zoomLabel}`,
+    10, height - 11
   );
 
-  // Crosshair e imantación (snap)
-  if (mouseX !== null && mouseY !== null) {
+  // ── 9. Crosshair + snap ──────────────────────────────────────────────────
+  if (mouseX !== null && mouseY !== null && mouseX < chartWidth) {
     let snapX = mouseX;
     let snapY = mouseY;
     let isSnapped = false;
 
-    // Buscar el marcador de evento más cercano para hacer "snap" magnético
     let closestMarker = null;
-    let minDist = 15; // radio de 15px
+    let minDist = 15;
     for (const marker of activeMarkers) {
       const dx = mouseX - marker.x;
       const dy = mouseY - marker.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < minDist) {
-        minDist = dist;
-        closestMarker = marker;
-      }
+      if (dist < minDist) { minDist = dist; closestMarker = marker; }
     }
 
-    let snappedTime = 0;
+    let snappedTime  = 0;
     let snappedPrice = 0;
 
-    // Calcular valores por interpolación de coordenadas de mouse
     const shiftX = chartWidth / (maxPoints - 1);
-    const index = snapX / shiftX;
+    const index  = snapX / shiftX;
     const i0 = Math.floor(index);
     const i1 = Math.min(history.length - 1, Math.ceil(index));
     if (i0 >= 0 && i1 < history.length) {
       const t0 = history[i0].time;
       const t1 = history[i1].time;
-      const ratio = index - i0;
-      snappedTime = t0 + ratio * (t1 - t0);
+      snappedTime = t0 + (index - i0) * (t1 - t0);
     } else if (history.length > 0) {
       snappedTime = history[history.length - 1].time;
     }
 
-    // Snap price (linear formula based on canvas Y metrics)
     const yFrac  = (chartBottom - snapY) / chartH;
     snappedPrice = yMin + yFrac * ySpan;
 
-    // Si hay un marcador cerca, imantar el cursor
     if (closestMarker) {
       snapX = closestMarker.x;
       snapY = closestMarker.y;
       isSnapped = true;
-
-      const firstEvt = closestMarker.events[0];
-      snappedTime = firstEvt.time;
-      snappedPrice = firstEvt.price || snappedPrice;
+      snappedTime  = closestMarker.events[0].time;
+      snappedPrice = closestMarker.events[0].price || snappedPrice;
     }
 
-    // Dibujar líneas discontinuas de la retícula
     ctx.save();
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.lineWidth = 1.0;
     ctx.setLineDash([3, 3]);
-
-    // Línea vertical
-    ctx.beginPath();
-    ctx.moveTo(snapX, 15);
-    ctx.lineTo(snapX, height - 22);
-    ctx.stroke();
-
-    // Línea horizontal
-    ctx.beginPath();
-    ctx.moveTo(0, snapY);
-    ctx.lineTo(chartWidth, snapY);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(snapX, chartTop); ctx.lineTo(snapX, height - 22); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, snapY); ctx.lineTo(chartWidth, snapY); ctx.stroke();
     ctx.restore();
 
-    // Dibujar etiqueta flotante del eje X (Timestamp)
-    const date = new Date(snappedTime);
-    const timeStr = date.toLocaleTimeString('es-ES', { hour12: false });
+    // Time badge (X axis)
+    const timeStr = new Date(snappedTime).toLocaleTimeString('es-ES', { hour12: false });
     ctx.font = '9px "JetBrains Mono", monospace';
-    const tWidth = ctx.measureText(timeStr).width;
-    const tBadgeW = tWidth + 10;
+    const tBadgeW = ctx.measureText(timeStr).width + 10;
     const tBadgeH = 14;
     const tBadgeX = Math.max(0, Math.min(chartWidth - tBadgeW, snapX - tBadgeW / 2));
     const tBadgeY = height - 22 - tBadgeH;
-
     ctx.save();
-    ctx.fillStyle = isSnapped ? '#4f46e5' : 'rgba(15, 23, 42, 0.95)';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.rect(tBadgeX, tBadgeY, tBadgeW, tBadgeH);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.fillStyle = isSnapped ? '#4f46e5' : 'rgba(15,23,42,0.95)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.rect(tBadgeX, tBadgeY, tBadgeW, tBadgeH); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(timeStr, tBadgeX + tBadgeW / 2, tBadgeY + tBadgeH / 2);
     ctx.restore();
 
-    // Dibujar etiqueta flotante del eje Y (Precio)
+    // Price badge (Y axis)
     const priceStr = formatNum(snappedPrice, decimals);
-    const pWidth = ctx.measureText(priceStr).width;
-    const pBadgeW = pWidth + 8;
-    const pBadgeH = 14;
-    const pBadgeX = width - pBadgeW - 2;
-    const pBadgeY = Math.max(15, Math.min(height - 22 - pBadgeH, snapY - pBadgeH / 2));
-
+    const pBadgeW  = ctx.measureText(priceStr).width + 8;
+    const pBadgeH  = 14;
+    const pBadgeX  = width - pBadgeW - 2;
+    const pBadgeY  = Math.max(chartTop, Math.min(height - 22 - pBadgeH, snapY - pBadgeH / 2));
     ctx.save();
-    ctx.fillStyle = isSnapped ? '#4f46e5' : 'rgba(15, 23, 42, 0.95)';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.rect(pBadgeX, pBadgeY, pBadgeW, pBadgeH);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.fillStyle = isSnapped ? '#4f46e5' : 'rgba(15,23,42,0.95)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.rect(pBadgeX, pBadgeY, pBadgeW, pBadgeH); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(priceStr, pBadgeX + pBadgeW / 2, pBadgeY + pBadgeH / 2);
     ctx.restore();
   }
 }
 
+// Direct connection to Binance public WebSocket stream for ticks (market feed)
+function connectBinancePublicWs(symbol: string) {
+  // Extract clean symbol (e.g. SOL/USDT:USDT -> SOL/USDT -> solusdt)
+  const baseSymbol = symbol.split(":")[0];
+  const normalizedSymbol = baseSymbol.replace("/", "").toLowerCase();
+  const wsUrl = `wss://fstream.binance.com/ws/${normalizedSymbol}@bookTicker`;
 
+  addLog(`[BINANCE-PUBLIC-WS] Connecting to public ticker feed at ${wsUrl}...`, 'info');
+  
+  binancePublicWs = new WebSocket(wsUrl);
 
+  binancePublicWs.onopen = () => {
+    addLog(`[BINANCE-PUBLIC-WS] Connection established for ${symbol.toUpperCase()} ticker!`, 'success');
+  };
 
+  binancePublicWs.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (!data) return;
+
+      const bidVal = Number(data.b);
+      const askVal = Number(data.a);
+      const spread = askVal - bidVal;
+
+      const nowMs = performance.now();
+      tickTimes.push(nowMs);
+      tickTimes = tickTimes.filter(t => nowMs - t < 1000);
+      hz = tickTimes.length;
+      if (feedRateValEl) feedRateValEl.innerText = `${hz} Hz`;
+
+      if (!dataSourceFlags.ticker) return;
+
+      const decimals = config.symbol.toLowerCase().includes("pepe") ? 8 : 4;
+      if (bidValEl) bidValEl.innerText = formatNum(bidVal, decimals);
+      if (askValEl) askValEl.innerText = formatNum(askVal, decimals);
+      if (spreadValEl) spreadValEl.innerText = formatNum(spread, decimals);
+
+      history.push({ time: Date.now(), bid: bidVal, ask: askVal });
+      if (history.length > maxPoints) {
+        history.shift();
+      }
+      drawChart();
+    } catch (err) {
+      console.error("[BINANCE-PUBLIC-WS] Parse error:", err);
+    }
+  };
+
+  binancePublicWs.onclose = () => {
+    addLog(`[BINANCE-PUBLIC-WS] Connection closed. Reconnecting in 3s...`, 'warn');
+    setTimeout(() => connectBinancePublicWs(symbol), 3000);
+  };
+}
 
 // Websocket integration
 function connectWebSocket() {
@@ -1050,9 +979,71 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
 
     canvasEl.addEventListener("mouseleave", () => {
-      mouseX = null;
-      mouseY = null;
+      if (!yDragActive) {
+        mouseX = null;
+        mouseY = null;
+      }
       if (tooltipEl) tooltipEl.style.display = 'none';
+      drawChart();
+    });
+
+    // ── Y-Axis drag: zoom in/out by dragging the right price panel ────────────
+    const getRightMarginStart = () => canvasEl!.width - 110;
+
+    canvasEl.addEventListener("mousemove", (eMov: MouseEvent) => {
+      const rect = canvasEl!.getBoundingClientRect();
+      const cx = eMov.clientX - rect.left;
+      if (cx >= getRightMarginStart()) {
+        canvasEl!.style.cursor = 'ns-resize';
+      } else {
+        canvasEl!.style.cursor = 'crosshair';
+      }
+    }, { capture: false });
+
+    canvasEl.addEventListener("mousedown", (eDown: MouseEvent) => {
+      const rect = canvasEl!.getBoundingClientRect();
+      const cx = eDown.clientX - rect.left;
+      if (cx < getRightMarginStart()) return;
+
+      // Snapshot current state
+      let dataMin2 = Infinity, dataMax2 = -Infinity;
+      for (const pt of history) {
+        if (pt.bid > 0 && pt.bid < dataMin2) dataMin2 = pt.bid;
+        if (pt.ask > 0 && pt.ask > dataMax2) dataMax2 = pt.ask;
+      }
+      const autoHalf2   = (dataMax2 - dataMin2) * 0.6 || dataMin2 * 0.05 || 0.0001;
+      const autoCenter2 = (dataMax2 + dataMin2) / 2;
+
+      yDragActive    = true;
+      yDragStartY    = eDown.clientY;
+      yDragStartRange = yRange !== null ? yRange : autoHalf2;
+      if (yCenter === null) yCenter = autoCenter2;
+
+      eDown.preventDefault();
+      drawChart();
+    });
+
+    window.addEventListener("mousemove", (eMov2: MouseEvent) => {
+      if (!yDragActive) return;
+      const dy = eMov2.clientY - yDragStartY;
+      const scaleFactor = 1 + dy * 0.008;
+      yRange = Math.max(yDragStartRange * 0.0001, yDragStartRange * scaleFactor);
+      drawChart();
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (!yDragActive) return;
+      yDragActive = false;
+      drawChart();
+    });
+
+    canvasEl.addEventListener("dblclick", (eDbl: MouseEvent) => {
+      const rect = canvasEl!.getBoundingClientRect();
+      const cx = eDbl.clientX - rect.left;
+      if (cx < getRightMarginStart()) return;
+      yCenter = null;
+      yRange  = null;
+      addLog('[CHART] Zoom del eje Y restablecido a auto-fit.', 'info');
       drawChart();
     });
   }
@@ -1259,6 +1250,9 @@ function updateModificationsList(mods: ModificationInfo[]) {
  */
 function handleBinancePrivateEvent(rawData: string) {
   try {
+    // ── Diagnostic Marker Injector ──
+    // This forces a visual blue query dot on the chart for EVERY message received from Rust Core
+    // to visually confirm that the communication channel works.
     const priceValDiag = history.length > 0 ? history[history.length - 1].bid : 0;
     hftEvents.push({
       e: 'HFT_EVENT',
@@ -1330,58 +1324,6 @@ function handleBinancePrivateEvent(rawData: string) {
   }
 }
 
-// Direct connection to Binance public WebSocket stream for ticks (market feed)
-function connectBinancePublicWs(symbol: string) {
-  const baseSymbol = symbol.split(":")[0];
-  const normalizedSymbol = baseSymbol.replace("/", "").toLowerCase();
-  const wsUrl = `wss://fstream.binance.com/ws/${normalizedSymbol}@bookTicker`;
-
-  addLog(`[BINANCE-PUBLIC-WS] Connecting to public ticker feed at ${wsUrl}...`, 'info');
-  
-  binancePublicWs = new WebSocket(wsUrl);
-
-  binancePublicWs.onopen = () => {
-    addLog(`[BINANCE-PUBLIC-WS] Connection established for ${symbol.toUpperCase()} ticker!`, 'success');
-  };
-
-  binancePublicWs.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      if (!data) return;
-
-      const bidVal = Number(data.b);
-      const askVal = Number(data.a);
-      const spread = askVal - bidVal;
-
-      const nowMs = performance.now();
-      tickTimes.push(nowMs);
-      tickTimes = tickTimes.filter(t => nowMs - t < 1000);
-      hz = tickTimes.length;
-      if (feedRateValEl) feedRateValEl.innerText = `${hz} Hz`;
-
-      if (!dataSourceFlags.ticker) return;
-
-      const decimals = config.symbol.toLowerCase().includes("pepe") ? 8 : 4;
-      if (bidValEl) bidValEl.innerText = formatNum(bidVal, decimals);
-      if (askValEl) askValEl.innerText = formatNum(askVal, decimals);
-      if (spreadValEl) spreadValEl.innerText = formatNum(spread, decimals);
-
-      history.push({ time: Date.now(), bid: bidVal, ask: askVal });
-      if (history.length > maxPoints) {
-        history.shift();
-      }
-      drawChart();
-    } catch (err) {
-      console.error("[BINANCE-PUBLIC-WS] Parse error:", err);
-    }
-  };
-
-  binancePublicWs.onclose = () => {
-    addLog(`[BINANCE-PUBLIC-WS] Connection closed. Reconnecting in 3s...`, 'warn');
-    setTimeout(() => connectBinancePublicWs(symbol), 3000);
-  };
-}
-
 /** Bind toggle switches and global ALL ON / ALL OFF buttons. */
 function initDataSourceControls() {
   const ALL_KEYS: DataSourceKey[] = ['ticker', 'orders', 'queries', 'stats', 'mods', 'chart'];
@@ -1415,4 +1357,3 @@ function initDataSourceControls() {
     });
   }
 }
-
