@@ -189,62 +189,63 @@ function drawChart() {
     return;
   }
 
-  // Calcular límites de la ventana visible
-  let minVal = Infinity;
-  let maxVal = -Infinity;
+  // ── Auto-fit data range (ignoring manual yCenter/yRange) ──────────────────
+  let dataMin = Infinity;
+  let dataMax = -Infinity;
   for (const pt of history) {
-    if (pt.bid > 0 && pt.bid < minVal) minVal = pt.bid;
-    if (pt.ask > 0 && pt.ask > maxVal) maxVal = pt.ask;
+    if (pt.bid > 0 && pt.bid < dataMin) dataMin = pt.bid;
+    if (pt.ask > 0 && pt.ask > dataMax) dataMax = pt.ask;
   }
+  if (dataMin === Infinity || dataMax === -Infinity) { dataMin = 0; dataMax = 0.004; }
 
-  if (minVal === Infinity || maxVal === -Infinity) {
-    minVal = 0.0000001;
-    maxVal = 0.004;
-  }
+  // ── Linear Y scale ────────────────────────────────────────────────────────
+  // If user has never dragged: auto-fit with 10% padding on each side.
+  const autoHalf   = (dataMax - dataMin) * 0.6 || dataMin * 0.05 || 0.0001;
+  const autoCenter = (dataMax + dataMin) / 2;
 
-  // Auto-escalado logarítmico (padding multiplicativo) exactamente como en exchangeMock
-  const yMin = minVal * 0.9;
-  const yMax = maxVal * 1.1;
+  const yCtr = yCenter !== null ? yCenter : autoCenter;
+  const yHalf = yRange !== null ? yRange  : autoHalf;
 
-  const logMin = Math.log(yMin);
-  const logMax = Math.log(yMax);
-  const logRange = logMax - logMin;
+  const yMin = yCtr - yHalf;
+  const yMax = yCtr + yHalf;
+  const ySpan = yMax - yMin || 1e-9;
 
   const rightMargin = 110;
-  const chartWidth = width - rightMargin;
+  const chartWidth  = width - rightMargin;
+  const chartTop    = 15;
+  const chartBottom = height - 35;
+  const chartH      = chartBottom - chartTop;
 
-  // Dibujar rejilla (Grid Lines)
+  // ── Grid lines (horizontal) ───────────────────────────────────────────────
+  const decimals = config.symbol.toLowerCase().includes('pepe') ? 8 : 4;
+  const gridCount = 5;
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)';
   ctx.lineWidth = 1;
-  const gridCount = 4;
+  ctx.setLineDash([]);
   ctx.fillStyle = 'rgba(148, 163, 184, 0.5)';
   ctx.font = '9px "JetBrains Mono", monospace';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  
+
   for (let i = 0; i <= gridCount; i++) {
-    const y = (i / gridCount) * (height - 50) + 15;
+    const frac     = i / gridCount;
+    const priceVal = yMin + (1 - frac) * ySpan;
+    const y        = chartTop + frac * chartH;
+
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(chartWidth, y);
     ctx.stroke();
-
-    const t = 1 - (i / gridCount);
-    const logVal = logMin + t * logRange;
-    const priceVal = Math.exp(logVal);
-    ctx.fillText(priceVal.toFixed(config.symbol.toLowerCase().includes("pepe") ? 8 : 4), chartWidth + 6, y);
+    ctx.fillText(priceVal.toFixed(decimals), chartWidth + 6, y);
   }
 
-  // Mapeo de coordenadas X e Y
+  // Linear mappers ───────────────────────────────────────────────────────────
   const getX = (index: number) => {
-    const shiftX = chartWidth / (maxPoints - 1);
-    return index * shiftX;
+    return index * (chartWidth / (maxPoints - 1));
   };
-  
+
   const getY = (price: number) => {
-    const p = price > 0 ? price : yMin;
-    const logPrice = Math.log(p);
-    return height - 35 - ((logPrice - logMin) / logRange) * (height - 50);
+    return chartBottom - ((price - yMin) / ySpan) * chartH;
   };
 
   // Helper to calculate X for a given timestamp
@@ -569,10 +570,9 @@ function drawChart() {
       snappedTime = history[history.length - 1].time;
     }
 
-    // Snap price (logarithmic formula based on canvas Y metrics)
-    const yFrac = (height - 35 - snapY) / (height - 50);
-    const logPrice = logMin + yFrac * logRange;
-    snappedPrice = Math.exp(logPrice);
+    // Snap price (linear formula based on canvas Y metrics)
+    const yFrac  = (chartBottom - snapY) / chartH;
+    snappedPrice = yMin + yFrac * ySpan;
 
     // Si hay un marcador cerca, imantar el cursor
     if (closestMarker) {
