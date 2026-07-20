@@ -98,7 +98,7 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
         struct ListenKeyResponse {
             #[serde(rename = "listenKey")]
             listen_key: String,
-            is_testnet: bool,
+            ws_url: String,
         }
 
         let lk_res: ListenKeyResponse = match res.json().await {
@@ -112,27 +112,11 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
             }
         };
 
-        let listen_key = lk_res.listen_key;
-        let is_testnet = lk_res.is_testnet;
+        let ws_url = lk_res.ws_url;
 
-        let ws_base = if is_testnet {
-            "wss://testnet.binancefuture.com/ws"
-        } else {
-            "wss://fstream.binance.com/ws"
-        };
-
-        let init_msg = format!("[Rust WS] Inicializando flujo privado en {} (is_testnet={})", ws_base, is_testnet);
+        let init_msg = format!("[Rust WS] Inicializando conexión a URL proxy dinámica: {}", ws_url);
         println!("{}", init_msg);
         let _ = app_handle.emit("binance-rust-log", init_msg);
-
-        let success_lk = format!("[Rust WS] listenKey obtenido con éxito: {}...", &listen_key[..std::cmp::min(10, listen_key.len())]);
-        println!("{}", success_lk);
-        let _ = app_handle.emit("binance-rust-log", success_lk);
-
-        let ws_url = format!("{}/{}", ws_base, listen_key);
-        let connect_msg = format!("[Rust WS] Conectando al WebSocket de usuario: {}...", ws_url);
-        println!("{}", connect_msg);
-        let _ = app_handle.emit("binance-rust-log", connect_msg);
 
         let ws_stream = match connect_async(&ws_url).await {
             Ok((stream, _)) => stream,
@@ -182,52 +166,6 @@ fn start_private_stream(app_handle: AppHandle) {
     let handle = app_handle.clone();
     tauri::async_runtime::spawn(async move {
         start_binance_private_stream(handle).await;
-    });
-
-    // ── Diagnostic Simulator (Mitad B) ──
-    // Emits a mock Binance payload to the frontend every 10 seconds 
-    // to isolate and verify the IPC event boundary.
-    let handle_sim = app_handle.clone();
-    tauri::async_runtime::spawn(async move {
-        loop {
-            sleep(Duration::from_secs(10)).await;
-            let mock_payload = r#"{
-                "e": "ORDER_TRADE_UPDATE",
-                "E": 1672531199000,
-                "o": {
-                    "s": "1000PEPEUSDC",
-                    "c": "test_client_order_id",
-                    "S": "BUY",
-                    "o": "LIMIT",
-                    "f": "GTC",
-                    "q": "1000",
-                    "p": "0.0028800",
-                    "ap": "0.0028800",
-                    "sp": "0.0000000",
-                    "x": "NEW",
-                    "X": "NEW",
-                    "i": 999999,
-                    "l": "0",
-                    "z": "0",
-                    "L": "0",
-                    "n": "0",
-                    "N": "USDT",
-                    "T": 1672531199000,
-                    "t": -1,
-                    "b": "2.88",
-                    "a": "2.88",
-                    "m": false,
-                    "R": false,
-                    "wt": "CONTRACT_PRICE",
-                    "ot": "LIMIT",
-                    "ps": "LONG",
-                    "cp": false,
-                    "rp": "0"
-                }
-            }"#;
-            let _ = handle_sim.emit("binance-rust-log", "[Rust Sim] Emitiendo evento ORDER_TRADE_UPDATE ficticio de prueba...".to_string());
-            let _ = handle_sim.emit("binance-private-event", mock_payload.to_string());
-        }
     });
 }
 
