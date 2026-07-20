@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 interface InstanceConfig {
   instance_id: string;
@@ -54,6 +55,47 @@ let hz = 0;
 let mouseX: number | null = null;
 let mouseY: number | null = null;
 let activeMarkers: VisualMarker[] = [];
+
+// ── Y-Axis linear zoom state (Binance-style drag) ──────────────────────────
+let yCenter: number | null = null;
+let yRange:  number | null = null;
+
+// Drag state for the right Y-axis panel
+let yDragActive  = false;
+let yDragStartY  = 0;       // canvas Y at mousedown
+let yDragStartRange = 0;    // yRange snapshot at mousedown
+
+// WebSocket reference for direct public Binance connection
+let binancePublicWs: WebSocket | null = null;
+
+// ── Data Source Control Flags ──────────────────────────────────────────────
+const dataSourceFlags = {
+  ticker:  true,
+  orders:  true,
+  queries: true,
+  stats:   true,
+  mods:    true,
+  chart:   true,
+};
+
+type DataSourceKey = keyof typeof dataSourceFlags;
+
+function setDataSource(key: DataSourceKey, enabled: boolean) {
+  dataSourceFlags[key] = enabled;
+  const card = document.getElementById(`ds-card-${key}`);
+  const dot  = document.getElementById(`ds-dot-${key}`);
+  const sw   = document.getElementById(`ds-switch-${key}`) as HTMLInputElement | null;
+  if (card) {
+    card.classList.toggle('ds-active',   enabled);
+    card.classList.toggle('ds-inactive', !enabled);
+  }
+  if (dot) {
+    dot.classList.toggle('active', enabled);
+    dot.classList.toggle('paused', !enabled);
+  }
+  if (sw && sw.checked !== enabled) sw.checked = enabled;
+}
+
 
 // DOM references
 let botTitleEl: HTMLElement | null = null;
@@ -630,7 +672,7 @@ function connectWebSocket() {
       connLedEl.className = 'led led-green';
       connTextEl.textContent = 'CONNECTED';
     }
-    addLog(`WebSocket connection established! Listening for 5ms telemetry stream.`, 'success');
+    addLog(`WebSocket connection established! Listening for local metrics/logs.`, 'success');
     // Fetch latest open orders to sync
     fetchOpenOrders();
   };
@@ -640,29 +682,8 @@ function connectWebSocket() {
       const payload = JSON.parse(event.data);
       
       if (payload.type === 'ticker_update' && payload.data) {
-        const bidVal = Number(payload.data.bid);
-        const askVal = Number(payload.data.ask);
-        const spread = askVal - bidVal;
-
-        // Direct-to-DOM HFT value updates bypassing any virtual DOM
-        const decimals = config.symbol.toLowerCase().includes("pepe") ? 8 : 4;
-        if (bidValEl) bidValEl.innerText = formatNum(bidVal, decimals);
-        if (askValEl) askValEl.innerText = formatNum(askVal, decimals);
-        if (spreadValEl) spreadValEl.innerText = formatNum(spread, decimals);
-
-        // Feed frequency calculations
-        const nowMs = performance.now();
-        tickTimes.push(nowMs);
-        tickTimes = tickTimes.filter(t => nowMs - t < 1000);
-        hz = tickTimes.length;
-        if (feedRateValEl) feedRateValEl.innerText = `${hz} Hz`;
-
-        // Update canvas values
-        history.push({ time: Date.now(), bid: bidVal, ask: askVal });
-        if (history.length > maxPoints) {
-          history.shift();
-        }
-        drawChart();
+        // Ticker updates are handled directly by public Binance WS
+        return;
       }
       else if (payload.type === 'stats_update' && payload.data) {
         const d = payload.data;
@@ -675,70 +696,8 @@ function connectWebSocket() {
         }
       }
       else if (payload.type === 'order_update' && payload.data) {
-        const d = payload.data;
-        const msg = `[ORDER] ${d.side} ${d.qty} ${d.symbol} @ ${d.price} | Status: ${d.status} | Reason: ${d.reason || '-'}`;
-        addLog(msg, (d.status || '').toUpperCase() === 'FILLED' ? 'success' : ((d.status || '').toUpperCase() === 'FAILED' || (d.status || '').toUpperCase() === 'REJECTED') ? 'err' : 'info');
-
-        let priceVal = Number(d.price);
-        if ((!priceVal || priceVal <= 0) && history.length > 0) {
-          const latest = history[history.length - 1];
-          priceVal = d.side.toLowerCase() === 'buy' ? latest.bid : latest.ask;
-        }
-
-        const statusUpper = (d.status || '').toUpperCase();
-        let eventType: 'buy' | 'sell' | 'cancel' | 'query' | 'buy_placed' | 'sell_placed' | 'cancel_failed' | 'cancel_buy' | 'cancel_sell' | 'cancel_buy_failed' | 'cancel_sell_failed' = 'query';
-        
-        const isBuy = (d.side || '').toUpperCase() === 'BUY';
-        if (statusUpper === 'NEW' || statusUpper === 'PARTIALLY_FILLED') {
-          eventType = isBuy ? 'buy_placed' : 'sell_placed';
-        } else if (statusUpper === 'FILLED') {
-          eventType = isBuy ? 'buy' : 'sell';
-        } else if (statusUpper === 'CANCELED' || statusUpper === 'EXPIRED') {
-          eventType = isBuy ? 'cancel_buy' : 'cancel_sell';
-        } else if (statusUpper === 'FAILED' || statusUpper === 'REJECTED') {
-          eventType = isBuy ? 'cancel_buy_failed' : 'cancel_sell_failed';
-        }
-
-        hftEvents.push({
-          e: 'HFT_EVENT',
-          type: eventType,
-          time: Date.now(),
-          price: priceVal,
-          qty: Number(d.qty || d.z || 0),
-          symbol: d.symbol,
-          orderId: d.id,
-          detail: msg
-        });
-
-        if (hftEvents.length > 500) {
-          hftEvents.shift();
-        }
-
-        // Reactively update openOrders
-        if (statusUpper === 'NEW' || statusUpper === 'PARTIALLY_FILLED') {
-          const newOrder: OpenOrder = {
-            id: d.id || '',
-            symbol: d.symbol,
-            type: d.type || 'LIMIT',
-            side: d.side || 'BUY',
-            price: Number(d.price || 0),
-            amount: Number(d.qty || 0),
-            filled: Number(d.z || 0),
-            remaining: Number(d.qty || 0) - Number(d.z || 0),
-            status: statusUpper,
-            datetime: new Date().toISOString()
-          };
-          if (!openOrders.some(o => o.id === newOrder.id)) {
-            openOrders.push(newOrder);
-          } else {
-            openOrders = openOrders.map(o => o.id === newOrder.id ? newOrder : o);
-          }
-        } else if (['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED', 'FAILED'].includes(statusUpper)) {
-          openOrders = openOrders.filter(o => o.id !== d.id);
-        }
-        renderOpenOrders();
-
-        drawChart();
+        // Consolidated: order updates are now processed EXCLUSIVELY via Tauri's Rust Core private WS stream.
+        return;
       }
       else if (payload.type === 'modifications_update' && payload.data) {
         updateModificationsList(payload.data);
@@ -1108,6 +1067,11 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (portDisplayEl) portDisplayEl.innerText = config.port;
     
     await fetchOpenOrders();
+
+    // Listen to private WebSocket stream direct from Rust Core
+    await listen("binance-private-event", (event) => {
+      handleBinancePrivateEvent(event.payload as string);
+    });
   } catch (err) {
     addLog(`Error fetching instance variables: ${err}`, 'err');
   }
@@ -1171,8 +1135,12 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // Connect to data socket
+  // Connect to public and local data sockets
+  connectBinancePublicWs(config.symbol);
   connectWebSocket();
+
+  // Initialize data source control panel
+  initDataSourceControls();
 });
 
 interface ModificationInfo {
@@ -1284,3 +1252,167 @@ function updateModificationsList(mods: ModificationInfo[]) {
     modsListEl.appendChild(card);
   }
 }
+
+/**
+ * Parses raw JSON messages from Binance Futures User Data Stream WebSocket
+ * received directly through Tauri's Rust core native proxy.
+ */
+function handleBinancePrivateEvent(rawData: string) {
+  try {
+    const priceValDiag = history.length > 0 ? history[history.length - 1].bid : 0;
+    hftEvents.push({
+      e: 'HFT_EVENT',
+      type: 'query',
+      time: Date.now(),
+      price: priceValDiag,
+      qty: 0,
+      symbol: 'DIAGNOSTIC',
+      detail: `[Rust WS Payload Received] Length: ${rawData.length} bytes`
+    });
+    if (hftEvents.length > 500) hftEvents.shift();
+    drawChart();
+
+    const event = JSON.parse(rawData);
+    if (!event || !event.e) return;
+
+    if (event.e === "ORDER_TRADE_UPDATE" && event.o) {
+      if (!dataSourceFlags.orders) return; // respect flags
+      const o = event.o;
+      
+      const symbol = o.s || "UNKNOWN";
+      const activeSymbol = config.symbol.split(":")[0].replace("/", "").replace(":", "").toUpperCase();
+      const eventSymbol = symbol.replace("/", "").replace(":", "").toUpperCase();
+      if (activeSymbol !== eventSymbol) return;
+
+      const side = o.S || "BUY";
+      const status = o.X || "NEW";
+      const executionType = o.x || "NEW";
+      const price = Number(o.p || 0);
+      const qty = Number(o.q || 0);
+      const orderId = String(o.i || '');
+
+      const msg = `[RUST-DIRECT-WS] ${side} ${qty} ${symbol} @ ${price} | Status: ${status} (exec: ${executionType})`;
+      addLog(msg, status === 'FILLED' ? 'success' : (status === 'CANCELED' || status === 'REJECTED') ? 'warn' : 'info');
+
+      const isBuy = side.toUpperCase() === 'BUY';
+      const isFilled = status === 'FILLED';
+      const isCanceled = status === 'CANCELED' || status === 'EXPIRED';
+
+      let markerType: HftEvent['type'] = isBuy ? 'buy_placed' : 'sell_placed';
+      if (isFilled) {
+        markerType = isBuy ? 'buy' : 'sell';
+      } else if (isCanceled) {
+        markerType = isBuy ? 'cancel_buy' : 'cancel_sell';
+      }
+
+      hftEvents.push({
+        e: 'HFT_EVENT',
+        type: markerType,
+        time: Date.now(),
+        price: price,
+        qty: qty,
+        symbol: symbol,
+        orderId: orderId,
+        detail: `[Direct] Status: ${status} | Exec: ${executionType}`
+      });
+
+      fetchOpenOrders();
+    } else if (event.e === "ACCOUNT_UPDATE") {
+      const wallets = event.a?.B || [];
+      for (const w of wallets) {
+        if (w.a === "USDT" && Number(w.wb) > 0) {
+          addLog(`[RUST-DIRECT-WS] Wallet Update → Asset: ${w.a} | Balance: ${w.wb}`, 'info');
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error("Failed to parse Binance private user data event:", err);
+  }
+}
+
+// Direct connection to Binance public WebSocket stream for ticks (market feed)
+function connectBinancePublicWs(symbol: string) {
+  const baseSymbol = symbol.split(":")[0];
+  const normalizedSymbol = baseSymbol.replace("/", "").toLowerCase();
+  const wsUrl = `wss://fstream.binance.com/ws/${normalizedSymbol}@bookTicker`;
+
+  addLog(`[BINANCE-PUBLIC-WS] Connecting to public ticker feed at ${wsUrl}...`, 'info');
+  
+  binancePublicWs = new WebSocket(wsUrl);
+
+  binancePublicWs.onopen = () => {
+    addLog(`[BINANCE-PUBLIC-WS] Connection established for ${symbol.toUpperCase()} ticker!`, 'success');
+  };
+
+  binancePublicWs.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (!data) return;
+
+      const bidVal = Number(data.b);
+      const askVal = Number(data.a);
+      const spread = askVal - bidVal;
+
+      const nowMs = performance.now();
+      tickTimes.push(nowMs);
+      tickTimes = tickTimes.filter(t => nowMs - t < 1000);
+      hz = tickTimes.length;
+      if (feedRateValEl) feedRateValEl.innerText = `${hz} Hz`;
+
+      if (!dataSourceFlags.ticker) return;
+
+      const decimals = config.symbol.toLowerCase().includes("pepe") ? 8 : 4;
+      if (bidValEl) bidValEl.innerText = formatNum(bidVal, decimals);
+      if (askValEl) askValEl.innerText = formatNum(askVal, decimals);
+      if (spreadValEl) spreadValEl.innerText = formatNum(spread, decimals);
+
+      history.push({ time: Date.now(), bid: bidVal, ask: askVal });
+      if (history.length > maxPoints) {
+        history.shift();
+      }
+      drawChart();
+    } catch (err) {
+      console.error("[BINANCE-PUBLIC-WS] Parse error:", err);
+    }
+  };
+
+  binancePublicWs.onclose = () => {
+    addLog(`[BINANCE-PUBLIC-WS] Connection closed. Reconnecting in 3s...`, 'warn');
+    setTimeout(() => connectBinancePublicWs(symbol), 3000);
+  };
+}
+
+/** Bind toggle switches and global ALL ON / ALL OFF buttons. */
+function initDataSourceControls() {
+  const ALL_KEYS: DataSourceKey[] = ['ticker', 'orders', 'queries', 'stats', 'mods', 'chart'];
+
+  for (const key of ALL_KEYS) {
+    const card = document.getElementById(`ds-card-${key}`);
+    if (card) card.classList.add('ds-active');
+  }
+
+  for (const key of ALL_KEYS) {
+    const sw = document.getElementById(`ds-switch-${key}`) as HTMLInputElement | null;
+    if (!sw) continue;
+    sw.addEventListener('change', () => {
+      setDataSource(key, sw.checked);
+    });
+  }
+
+  const enableAllBtn = document.getElementById('ds-enable-all-btn');
+  if (enableAllBtn) {
+    enableAllBtn.addEventListener('click', () => {
+      for (const key of ALL_KEYS) setDataSource(key, true);
+      addLog('[DATA FEED] Todas las fuentes activadas.', 'success');
+    });
+  }
+
+  const disableAllBtn = document.getElementById('ds-disable-all-btn');
+  if (disableAllBtn) {
+    disableAllBtn.addEventListener('click', () => {
+      for (const key of ALL_KEYS) setDataSource(key, false);
+      addLog('[DATA FEED] Todas las fuentes desactivadas.', 'warn');
+    });
+  }
+}
+

@@ -83,6 +83,7 @@
       </section>
 
       <!-- WORKSPACE: CHART & RECENT MODIFICATIONS SIDE-BY-SIDE -->
+
       <div class="main-workspace">
         <!-- CHART AREA -->
         <section class="chart-section">
@@ -140,6 +141,121 @@
           <div class="log-row info">Waiting for data stream...</div>
         </div>
       </section>
+
+      <!-- DATA SOURCE CONTROL PANEL -->
+      <section class="data-sources-section" id="data-sources-section">
+        <div class="ds-header">
+          <div class="ds-title-group">
+            <span class="ds-pulse-ring"></span>
+            <h2 class="ds-title">DATA FEED CONTROL</h2>
+            <span class="ds-subtitle">Fuentes de datos en tiempo real</span>
+          </div>
+          <div class="ds-global-actions">
+            <button id="ds-enable-all-btn" class="ds-global-btn ds-all-on">⬛ ALL ON</button>
+            <button id="ds-disable-all-btn" class="ds-global-btn ds-all-off">◻ ALL OFF</button>
+          </div>
+        </div>
+        <div class="ds-grid">
+
+          <!-- TICKER FEED -->
+          <div class="ds-card" id="ds-card-ticker">
+            <div class="ds-card-icon ticker">⚡</div>
+            <div class="ds-card-info">
+              <span class="ds-card-name">TICKER FEED</span>
+              <span class="ds-card-desc">BID/ASK · Gráfico · Hz</span>
+            </div>
+            <div class="ds-card-right">
+              <span class="ds-status-dot active" id="ds-dot-ticker"></span>
+              <label class="ds-toggle">
+                <input type="checkbox" id="ds-switch-ticker" checked>
+                <span class="ds-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- ORDER EVENTS -->
+          <div class="ds-card" id="ds-card-orders">
+            <div class="ds-card-icon orders">📋</div>
+            <div class="ds-card-info">
+              <span class="ds-card-name">ORDER EVENTS</span>
+              <span class="ds-card-desc">Fills · Cancels · Gráfico</span>
+            </div>
+            <div class="ds-card-right">
+              <span class="ds-status-dot active" id="ds-dot-orders"></span>
+              <label class="ds-toggle">
+                <input type="checkbox" id="ds-switch-orders" checked>
+                <span class="ds-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- QUERY LOG -->
+          <div class="ds-card" id="ds-card-queries">
+            <div class="ds-card-icon queries">🔵</div>
+            <div class="ds-card-info">
+              <span class="ds-card-name">QUERY LOG</span>
+              <span class="ds-card-desc">HTTP · Dots en gráfico</span>
+            </div>
+            <div class="ds-card-right">
+              <span class="ds-status-dot active" id="ds-dot-queries"></span>
+              <label class="ds-toggle">
+                <input type="checkbox" id="ds-switch-queries" checked>
+                <span class="ds-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- STATS PANEL -->
+          <div class="ds-card" id="ds-card-stats">
+            <div class="ds-card-icon stats">📊</div>
+            <div class="ds-card-info">
+              <span class="ds-card-name">STATS PANEL</span>
+              <span class="ds-card-desc">Placed · Modified · Fills</span>
+            </div>
+            <div class="ds-card-right">
+              <span class="ds-status-dot active" id="ds-dot-stats"></span>
+              <label class="ds-toggle">
+                <input type="checkbox" id="ds-switch-stats" checked>
+                <span class="ds-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- MODIFICATIONS -->
+          <div class="ds-card" id="ds-card-mods">
+            <div class="ds-card-icon mods">✏️</div>
+            <div class="ds-card-info">
+              <span class="ds-card-name">MODIFICATIONS</span>
+              <span class="ds-card-desc">Price · Side · History</span>
+            </div>
+            <div class="ds-card-right">
+              <span class="ds-status-dot active" id="ds-dot-mods"></span>
+              <label class="ds-toggle">
+                <input type="checkbox" id="ds-switch-mods" checked>
+                <span class="ds-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- CHART RENDER -->
+          <div class="ds-card" id="ds-card-chart">
+            <div class="ds-card-icon chart">🖥️</div>
+            <div class="ds-card-info">
+              <span class="ds-card-name">CHART RENDER</span>
+              <span class="ds-card-desc">Canvas · Freeze visual</span>
+            </div>
+            <div class="ds-card-right">
+              <span class="ds-status-dot active" id="ds-dot-chart"></span>
+              <label class="ds-toggle">
+                <input type="checkbox" id="ds-switch-chart" checked>
+                <span class="ds-slider"></span>
+              </label>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
     </main>
   </body>
 </html>
