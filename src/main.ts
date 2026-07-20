@@ -51,6 +51,8 @@ let history: TickData[] = [];
 let hftEvents: HftEvent[] = [];
 let openOrders: OpenOrder[] = [];
 let maxPoints = 150;
+let xAdvanceMode: 'tick' | 'second' = 'tick';
+let animationFrameId: number | null = null;
 let tickTimes: number[] = [];
 let hz = 0;
 let mouseX: number | null = null;
@@ -218,27 +220,60 @@ function drawChart() {
   const chartH      = chartBottom - chartTop;
 
   // Linear mappers ─────────────────────────────────────────────────────────
+  const now = Date.now();
+  const timeWindow = maxPoints * 1000; // window in ms
+  const tMin = xAdvanceMode === 'second' ? now - timeWindow : (history.length > 0 ? history[0].time : now);
+  const tMax = xAdvanceMode === 'second' ? now : (history.length > 0 ? history[history.length - 1].time : now);
+
+  const getXForTime = (time: number) => {
+    if (xAdvanceMode === 'second') {
+      if (time <= tMin) return 0;
+      if (time >= tMax) return chartWidth;
+      return ((time - tMin) / timeWindow) * chartWidth;
+    } else {
+      if (history.length === 0) return 0;
+      if (time <= history[0].time) return 0;
+      if (time >= history[history.length - 1].time) return chartWidth;
+      for (let i = 0; i < history.length - 1; i++) {
+        const t0 = history[i].time;
+        const t1 = history[i + 1].time;
+        if (time >= t0 && time <= t1) {
+          const ratio = (time - t0) / (t1 - t0);
+          return (i + ratio) * (chartWidth / (maxPoints - 1));
+        }
+      }
+      return chartWidth;
+    }
+  };
+
   const getX = (index: number) => {
-    return index * (chartWidth / (maxPoints - 1));
+    if (xAdvanceMode === 'second') {
+      if (index < 0 || index >= history.length) return 0;
+      return getXForTime(history[index].time);
+    } else {
+      return index * (chartWidth / (maxPoints - 1));
+    }
+  };
+
+  const getTimeForX = (x: number): number => {
+    if (xAdvanceMode === 'second') {
+      return tMin + (x / chartWidth) * timeWindow;
+    } else {
+      const shiftX = chartWidth / (maxPoints - 1);
+      const index = x / shiftX;
+      const i0 = Math.floor(index);
+      const i1 = Math.min(history.length - 1, Math.ceil(index));
+      if (i0 >= 0 && i1 < history.length) {
+        const t0 = history[i0].time;
+        const t1 = history[i1].time;
+        return t0 + (index - i0) * (t1 - t0);
+      }
+      return history.length > 0 ? history[history.length - 1].time : Date.now();
+    }
   };
 
   const getY = (price: number) => {
     return chartBottom - ((price - yMin) / ySpan) * chartH;
-  };
-
-  const getXForTime = (time: number) => {
-    if (history.length === 0) return 0;
-    if (time <= history[0].time) return getX(0);
-    if (time >= history[history.length - 1].time) return getX(history.length - 1);
-    for (let i = 0; i < history.length - 1; i++) {
-      const t0 = history[i].time;
-      const t1 = history[i + 1].time;
-      if (time >= t0 && time <= t1) {
-        const ratio = (time - t0) / (t1 - t0);
-        return getX(i + ratio);
-      }
-    }
-    return getX(history.length - 1);
   };
 
   // ── Y-axis drag handle highlight ─────────────────────────────────────────
@@ -291,6 +326,40 @@ function drawChart() {
     ctx.fillText(priceVal.toFixed(decimals), chartWidth + 6, y);
   }
 
+  // ── Grid lines (vertical/timeline) ───────────────────────────────────────
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)';
+  ctx.lineWidth = 1;
+  ctx.fillStyle = 'rgba(148, 163, 184, 0.35)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.font = '8px "JetBrains Mono", monospace';
+  const vGridCount = 4;
+  for (let i = 0; i <= vGridCount; i++) {
+    const frac = i / vGridCount;
+    const x = frac * chartWidth;
+
+    ctx.beginPath();
+    ctx.moveTo(x, chartTop);
+    ctx.lineTo(x, chartBottom);
+    ctx.stroke();
+
+    const timeVal = getTimeForX(x);
+    let label = '';
+    if (xAdvanceMode === 'second') {
+      const diffSec = Math.round((timeVal - now) / 1000);
+      label = diffSec === 0 ? 'NOW' : `${diffSec}s`;
+    } else {
+      label = new Date(timeVal).toLocaleTimeString('es-ES', { hour12: false });
+    }
+    ctx.fillText(label, x, chartBottom + 5);
+    if (xAdvanceMode === 'second') {
+      const absTimeStr = new Date(timeVal).toLocaleTimeString('es-ES', { hour12: false });
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.15)';
+      ctx.fillText(absTimeStr, x, chartBottom + 14);
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.35)';
+    }
+  }
+
   // ── 1. Spread shaded area ────────────────────────────────────────────────
   ctx.fillStyle = 'rgba(59, 130, 246, 0.05)';
   ctx.beginPath();
@@ -318,8 +387,6 @@ function drawChart() {
   ctx.stroke();
 
   // ── 4. HFT event markers ─────────────────────────────────────────────────
-  const tMin = history[0].time;
-  const tMax = history[history.length - 1].time;
   const visibleEvents = hftEvents.filter(e => e.time >= tMin && e.time <= tMax);
   const queryEvents   = visibleEvents.filter(e => e.type === 'query');
   const tradingEvents = visibleEvents.filter(e => e.type !== 'query');
@@ -472,17 +539,7 @@ function drawChart() {
     let snappedTime  = 0;
     let snappedPrice = 0;
 
-    const shiftX = chartWidth / (maxPoints - 1);
-    const index  = snapX / shiftX;
-    const i0 = Math.floor(index);
-    const i1 = Math.min(history.length - 1, Math.ceil(index));
-    if (i0 >= 0 && i1 < history.length) {
-      const t0 = history[i0].time;
-      const t1 = history[i1].time;
-      snappedTime = t0 + (index - i0) * (t1 - t0);
-    } else if (history.length > 0) {
-      snappedTime = history[history.length - 1].time;
-    }
+    snappedTime = getTimeForX(snapX);
 
     const yFrac  = (chartBottom - snapY) / chartH;
     snappedPrice = yMin + yFrac * ySpan;
@@ -534,6 +591,52 @@ function drawChart() {
   }
 }
 
+function pruneHistory() {
+  if (xAdvanceMode === 'second') {
+    const timeLimit = Date.now() - (maxPoints * 1000);
+    while (history.length > 2 && history[1].time < timeLimit) {
+      history.shift();
+    }
+  } else {
+    while (history.length > maxPoints) {
+      history.shift();
+    }
+  }
+}
+
+function startSecondAnimationLoop() {
+  if (animationFrameId !== null) return;
+  const loop = () => {
+    if (xAdvanceMode === 'second') {
+      drawChart();
+      animationFrameId = requestAnimationFrame(loop);
+    } else {
+      animationFrameId = null;
+    }
+  };
+  animationFrameId = requestAnimationFrame(loop);
+}
+
+function stopSecondAnimationLoop() {
+  if (animationFrameId !== null) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+}
+
+function updateXAdvanceMode(mode: 'tick' | 'second') {
+  xAdvanceMode = mode;
+  if (mode === 'second') {
+    startSecondAnimationLoop();
+    addLog('[CHART] Eje X cambiado a modo TEMPORAL (avance por segundo).', 'info');
+  } else {
+    stopSecondAnimationLoop();
+    pruneHistory();
+    drawChart();
+    addLog('[CHART] Eje X cambiado a modo TICK (avance por tick).', 'info');
+  }
+}
+
 // Direct connection to Binance public WebSocket stream for ticks (market feed)
 function connectBinancePublicWs(symbol: string) {
   // Extract clean symbol (e.g. SOL/USDT:USDT -> SOL/USDT -> solusdt)
@@ -576,9 +679,7 @@ function connectBinancePublicWs(symbol: string) {
       if (spreadValEl) spreadValEl.innerText = formatNum(spread, decimals);
 
       history.push({ time: Date.now(), bid: bidVal, ask: askVal });
-      if (history.length > maxPoints) {
-        history.shift();
-      }
+      pruneHistory();
       drawChart();
     } catch (err) {
       console.error("[BINANCE-PUBLIC-WS] Parse error:", err);
@@ -1086,10 +1187,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (samplesSelectEl) {
     samplesSelectEl.addEventListener("change", (e) => {
       maxPoints = Number((e.target as HTMLSelectElement).value);
-      while (history.length > maxPoints) {
-        history.shift();
-      }
+      pruneHistory();
       drawChart();
+    });
+  }
+
+  const xAdvanceSelectEl = document.getElementById("x-advance-select") as HTMLSelectElement | null;
+  if (xAdvanceSelectEl) {
+    xAdvanceSelectEl.addEventListener("change", (e) => {
+      const mode = (e.target as HTMLSelectElement).value as 'tick' | 'second';
+      updateXAdvanceMode(mode);
     });
   }
 
