@@ -29,13 +29,26 @@ fn load_env() -> Result<std::path::PathBuf, dotenvy::Error> {
     if let Ok(p) = dotenvy::dotenv() {
         return Ok(p);
     }
-    let backend_env = std::path::Path::new("..").join("backend").join(".env");
-    if backend_env.exists() {
-        return dotenvy::from_path(&backend_env).map(|_| backend_env);
-    }
-    let local_backend_env = std::path::Path::new("backend").join(".env");
-    if local_backend_env.exists() {
-        return dotenvy::from_path(&local_backend_env).map(|_| local_backend_env);
+    // Search upwards to find backend/.env
+    if let Ok(current_dir) = std::env::current_dir() {
+        let mut dir = current_dir;
+        loop {
+            let backend_env = dir.join("backend").join(".env");
+            if backend_env.exists() {
+                println!("[Rust WS] .env file loaded from path: {:?}", backend_env);
+                return dotenvy::from_path(&backend_env).map(|_| backend_env);
+            }
+            let parent_backend_env = dir.join("..").join("backend").join(".env");
+            if parent_backend_env.exists() {
+                println!("[Rust WS] .env file loaded from parent path: {:?}", parent_backend_env);
+                return dotenvy::from_path(&parent_backend_env).map(|_| parent_backend_env);
+            }
+            if let Some(parent) = dir.parent() {
+                dir = parent.to_path_buf();
+            } else {
+                break;
+            }
+        }
     }
     dotenvy::dotenv()
 }
@@ -43,18 +56,24 @@ fn load_env() -> Result<std::path::PathBuf, dotenvy::Error> {
 async fn start_binance_private_stream(app_handle: AppHandle) {
     let _ = load_env();
 
-    let api_key = match env::var("BINANCE_API_KEY2") {
-        Ok(val) => val,
-        Err(_) => {
-            eprintln!("[Rust WS] BINANCE_API_KEY2 not found in env. Private stream aborted.");
-            return;
-        }
-    };
+    let client = reqwest::Client::new();
 
-    let is_testnet = env::var("TESTNET")
-        .unwrap_or_else(|_| "false".to_string())
-        .trim()
-        .to_lowercase() == "true";
+    loop {
+        let api_key = match env::var("BINANCE_API_KEY2") {
+            Ok(val) => val,
+            Err(_) => {
+                let err_msg = "[Rust WS] ERROR: BINANCE_API_KEY2 no encontrada en .env. Verifica que el archivo .env exista en la raiz de bot-dashboard y tenga esta clave. Reintentando verificar en 5s...".to_string();
+                eprintln!("{}", err_msg);
+                let _ = app_handle.emit("binance-rust-log", err_msg);
+                sleep(Duration::from_secs(5)).await;
+                continue;
+            }
+        };
+
+        let is_testnet = env::var("TESTNET")
+            .unwrap_or_else(|_| "false".to_string())
+            .trim()
+            .to_lowercase() == "true";
 
     let rest_base = if is_testnet {
         "https://testnet.binancefuture.com"
@@ -68,12 +87,13 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
         "wss://fstream.binance.com/ws"
     };
 
-    println!("[Rust WS] Initializing Binance private user stream (testnet={})...", is_testnet);
+    let init_msg = format!("[Rust WS] Inicializando flujo privado en {} (Testnet={})", rest_base, is_testnet);
+    println!("{}", init_msg);
+    let _ = app_handle.emit("binance-rust-log", init_msg);
 
-    let client = reqwest::Client::new();
+    let listen_key_url = format!("{}/fapi/v1/listenKey", rest_base);
+    let _ = app_handle.emit("binance-rust-log", format!("[Rust WS] Solicitando listenKey a {}...", listen_key_url));
 
-    loop {
-        let listen_key_url = format!("{}/fapi/v1/listenKey", rest_base);
         let res = match client.post(&listen_key_url)
             .header("X-MBX-APIKEY", &api_key)
             .send()
@@ -81,7 +101,9 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
         {
             Ok(r) => r,
             Err(e) => {
-                eprintln!("[Rust WS] Failed to request listenKey: {}. Retrying in 10s...", e);
+                let err_msg = format!("[Rust WS] ERROR al pedir listenKey: {}. Reintentando en 10s...", e);
+                eprintln!("{}", err_msg);
+                let _ = app_handle.emit("binance-rust-log", err_msg);
                 sleep(Duration::from_secs(10)).await;
                 continue;
             }
@@ -90,7 +112,9 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
         if !res.status().is_success() {
             let status = res.status();
             let body = res.text().await.unwrap_or_default();
-            eprintln!("[Rust WS] listenKey HTTP error ({}): {}. Retrying in 10s...", status, body);
+            let err_msg = format!("[Rust WS] ERROR HTTP de listenKey ({}): {}. Reintentando en 10s...", status, body);
+            eprintln!("{}", err_msg);
+            let _ = app_handle.emit("binance-rust-log", err_msg);
             sleep(Duration::from_secs(10)).await;
             continue;
         }
@@ -104,24 +128,29 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
         let lk_res: ListenKeyResponse = match res.json().await {
             Ok(json) => json,
             Err(e) => {
-                eprintln!("[Rust WS] Failed to parse listenKey JSON: {}. Retrying in 10s...", e);
+                let err_msg = format!("[Rust WS] ERROR al deserializar listenKey JSON: {}. Reintentando en 10s...", e);
+                eprintln!("{}", err_msg);
+                let _ = app_handle.emit("binance-rust-log", err_msg);
                 sleep(Duration::from_secs(10)).await;
                 continue;
             }
         };
 
         let listen_key = lk_res.listen_key;
-        println!("[Rust WS] Got listenKey: {}...", &listen_key[..std::cmp::min(10, listen_key.len())]);
+        let success_lk = format!("[Rust WS] listenKey obtenido con éxito: {}...", &listen_key[..std::cmp::min(10, listen_key.len())]);
+        println!("{}", success_lk);
+        let _ = app_handle.emit("binance-rust-log", success_lk);
 
         let client_clone = client.clone();
         let api_key_clone = api_key.clone();
         let listen_key_clone = listen_key.clone();
         let listen_key_url_clone = listen_key_url.clone();
         
+        let app_handle_ping = app_handle.clone();
         let keep_alive_handle = tauri::async_runtime::spawn(async move {
             loop {
                 sleep(Duration::from_secs(30 * 60)).await;
-                println!("[Rust WS] Sending listenKey keepalive ping...");
+                let _ = app_handle_ping.emit("binance-rust-log", "[Rust WS] Enviando keepalive ping de listenKey...".to_string());
                 let ping_res = client_clone.put(&listen_key_url_clone)
                     .header("X-MBX-APIKEY", &api_key_clone)
                     .query(&[("listenKey", &listen_key_clone)])
@@ -129,32 +158,39 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
                     .await;
                 match ping_res {
                     Ok(r) if r.status().is_success() => {
-                        println!("[Rust WS] listenKey keepalive successful.");
+                        let _ = app_handle_ping.emit("binance-rust-log", "[Rust WS] Keepalive de listenKey exitoso.".to_string());
                     }
                     Ok(r) => {
-                        eprintln!("[Rust WS] listenKey keepalive returned error code: {}", r.status());
+                        let _ = app_handle_ping.emit("binance-rust-log", format!("[Rust WS] ADVERTENCIA: keepalive falló con estado: {}", r.status()));
                     }
                     Err(e) => {
-                        eprintln!("[Rust WS] listenKey keepalive request failed: {}", e);
+                        let _ = app_handle_ping.emit("binance-rust-log", format!("[Rust WS] ADVERTENCIA: keepalive falló por red: {}", e));
                     }
                 }
             }
         });
 
         let ws_url = format!("{}/{}", ws_base, listen_key);
-        println!("[Rust WS] Connecting to private stream at {}...", ws_url);
+        let connect_msg = format!("[Rust WS] Conectando al WebSocket de usuario: {}...", ws_url);
+        println!("{}", connect_msg);
+        let _ = app_handle.emit("binance-rust-log", connect_msg);
 
         let ws_stream = match connect_async(&ws_url).await {
             Ok((stream, _)) => stream,
             Err(e) => {
-                eprintln!("[Rust WS] WebSocket connection failed: {}. Retrying in 10s...", e);
+                let err_msg = format!("[Rust WS] ERROR al conectar WebSocket: {}. Reintentando en 10s...", e);
+                eprintln!("{}", err_msg);
+                let _ = app_handle.emit("binance-rust-log", err_msg);
                 keep_alive_handle.abort();
                 sleep(Duration::from_secs(10)).await;
                 continue;
             }
         };
 
-        println!("[Rust WS] Connected to Binance User Data Stream!");
+        let established_msg = "[Rust WS] Conectado exitosamente al User Data Stream de Binance!".to_string();
+        println!("{}", established_msg);
+        let _ = app_handle.emit("binance-rust-log", established_msg);
+
         let (_, mut read) = ws_stream.split();
 
         while let Some(message) = read.next().await {
@@ -162,19 +198,24 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
                 Ok(msg) => {
                     if msg.is_text() || msg.is_binary() {
                         if let Ok(text) = msg.to_text() {
+                            let _ = app_handle.emit("binance-rust-log", format!("[Rust WS] Payload crudo recibido ({} bytes)", text.len()));
                             let _ = app_handle.emit("binance-private-event", text.to_string());
                         }
                     }
                 }
                 Err(e) => {
-                    eprintln!("[Rust WS] WebSocket connection error: {}. Reconnecting...", e);
+                    let err_msg = format!("[Rust WS] ERROR de conexión de WebSocket: {}. Reconectando...", e);
+                    eprintln!("{}", err_msg);
+                    let _ = app_handle.emit("binance-rust-log", err_msg);
                     break;
                 }
             }
         }
 
         keep_alive_handle.abort();
-        println!("[Rust WS] Disconnected. Reconnecting to private stream in 5s...");
+        let disc_msg = "[Rust WS] Desconectado. Reconectando en 5s...".to_string();
+        println!("{}", disc_msg);
+        let _ = app_handle.emit("binance-rust-log", disc_msg);
         sleep(Duration::from_secs(5)).await;
     }
 }

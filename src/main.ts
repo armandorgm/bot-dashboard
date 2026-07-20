@@ -1063,6 +1063,11 @@ window.addEventListener("DOMContentLoaded", async () => {
     await listen("binance-private-event", (event) => {
       handleBinancePrivateEvent(event.payload as string);
     });
+
+    // Listen to native Rust Core system logs
+    await listen("binance-rust-log", (event) => {
+      addLog(event.payload as string, 'info');
+    });
   } catch (err) {
     addLog(`Error fetching instance variables: ${err}`, 'err');
   }
