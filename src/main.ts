@@ -657,9 +657,6 @@ function connectBinancePublicWs(symbol: string) {
       const data = JSON.parse(event.data);
       if (!data) return;
       // Diagnostic Log: prints tick count or contents
-      if (Math.random() < 0.05) {
-        addLog(`[PUBLIC TICK DIAG] Bid: ${data.b} | Ask: ${data.a}`, 'info');
-      }
 
       const bidVal = Number(data.b);
       const askVal = Number(data.a);
