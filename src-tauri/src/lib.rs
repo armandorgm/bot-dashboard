@@ -56,7 +56,13 @@ fn load_env() -> Result<std::path::PathBuf, dotenvy::Error> {
 async fn start_binance_private_stream(app_handle: AppHandle) {
     let _ = load_env();
 
-    let client = reqwest::Client::new();
+    let client = match reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .build() 
+    {
+        Ok(c) => c,
+        Err(_) => reqwest::Client::new(),
+    };
 
     loop {
         let api_key = match env::var("BINANCE_API_KEY2") {
