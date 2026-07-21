@@ -34,6 +34,23 @@ interface VisualMarker {
   events: HftEvent[];
 }
 
+export interface ChasePipelineProcess {
+  id: number;
+  pipeline_id: number;
+  symbol: string;
+  entry_order_id?: string;
+  exit_order_id?: string;
+  status: 'CHASING' | 'WAITING_FILL' | 'PLACING_TP' | 'COMPLETED' | 'ABORTED' | string;
+  sub_status: string;
+  initial_price?: number;
+  last_tick_price?: number;
+  last_order_price?: number;
+  side: string;
+  amount: number;
+  created_at?: string;
+  finished_at?: string;
+}
+
 interface OpenOrder {
   id: string;
   symbol: string;
@@ -50,6 +67,7 @@ interface OpenOrder {
 let history: TickData[] = [];
 let hftEvents: HftEvent[] = [];
 let openOrders: OpenOrder[] = [];
+let activeChaseProcesses: ChasePipelineProcess[] = [];
 let maxPoints = 150;
 let xAdvanceMode: 'tick' | 'second' = 'tick';
 let animationFrameId: number | null = null;
@@ -441,6 +459,95 @@ function drawChart() {
     ctx.lineTo(xEnd, yVal);
     ctx.stroke();
     ctx.restore();
+  });
+
+  // ── 5.5. Chase v2 Order Link Visualization ──────────────────────────────
+  activeChaseProcesses.forEach((proc) => {
+    // Persiste únicamente hasta que el proceso esté en estado COMPLETED o ABORTED
+    if (proc.status === 'COMPLETED' || proc.status === 'ABORTED') return;
+
+    // Buscar el marcador de la orden de entrada por entry_order_id
+    let entryX: number | null = null;
+    let entryY: number | null = null;
+    if (proc.entry_order_id) {
+      for (const m of activeMarkers) {
+        const found = m.events.find(e => String(e.orderId) === String(proc.entry_order_id));
+        if (found) {
+          entryX = m.x;
+          entryY = m.y;
+          break;
+        }
+      }
+    }
+
+    // Buscar marcador de exit_order_id si existe
+    let exitX: number | null = null;
+    let exitY: number | null = null;
+    if (proc.exit_order_id) {
+      for (const m of activeMarkers) {
+        const found = m.events.find(e => String(e.orderId) === String(proc.exit_order_id));
+        if (found) {
+          exitX = m.x;
+          exitY = m.y;
+          break;
+        }
+      }
+    }
+
+    // Si no se encuentra el marcador de entrada en pantalla pero tenemos last_order_price / initial_price
+    const targetPrice = proc.last_order_price || proc.initial_price;
+    if (entryX === null && targetPrice) {
+      entryY = getY(targetPrice);
+      entryX = chartWidth * 0.2; // posición relativa por defecto
+    }
+
+    if (entryX !== null && entryY !== null) {
+      ctx.save();
+      const isChasing = proc.status === 'CHASING';
+      const isWaiting = proc.status === 'WAITING_FILL';
+
+      const lineColor = isChasing ? '#f59e0b' : isWaiting ? '#06b6d4' : '#10b981';
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([5, 4]);
+
+      const targetX = exitX !== null ? exitX : chartWidth;
+      const targetY = exitY !== null ? exitY : entryY;
+
+      // Dibujar línea conectora (Bezier curve suave o recta)
+      ctx.beginPath();
+      ctx.moveTo(entryX, entryY);
+      const cpX1 = entryX + (targetX - entryX) * 0.5;
+      const cpY1 = entryY;
+      const cpX2 = entryX + (targetX - entryX) * 0.5;
+      const cpY2 = targetY;
+      ctx.bezierCurveTo(cpX1, cpY1, cpX2, cpY2, targetX, targetY);
+      ctx.stroke();
+
+      // Dibujar Badge de Identificación en el centro del vínculo
+      const midX = (entryX + targetX) / 2;
+      const midY = (entryY + targetY) / 2;
+      const badgeText = `CHASE #${proc.id} | ${proc.sub_status || proc.status}`;
+      
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      const textWidth = ctx.measureText(badgeText).width;
+      
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.roundRect(midX - textWidth / 2 - 6, midY - 8, textWidth + 12, 16, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = lineColor;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(badgeText, midX, midY);
+
+      ctx.restore();
+    }
   });
 
   // ── 6. Draw event markers ────────────────────────────────────────────────
@@ -948,6 +1055,20 @@ function renderOpenOrders() {
   });
 }
 
+async function fetchActivePipelines() {
+  const parentPort = config.parent_api_port || "8000";
+  try {
+    const response = await fetch(`http://127.0.0.1:${parentPort}/api/pipelines/active`);
+    if (response.ok) {
+      const data: ChasePipelineProcess[] = await response.json();
+      activeChaseProcesses = data;
+      drawChart();
+    }
+  } catch (err) {
+    console.warn("Failed to fetch active pipeline processes:", err);
+  }
+}
+
 async function cancelOrder(orderId: string, symbol: string) {
   const orderObj = openOrders.find(o => String(o.id) === String(orderId));
   try {
@@ -1248,6 +1369,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Connect to public and local data sockets
   connectBinancePublicWs(config.symbol);
   connectWebSocket();
+
+  // Fetch active Chase v2 pipeline processes and set up periodic refresh
+  fetchActivePipelines();
+  setInterval(fetchActivePipelines, 3000);
 
   // Initialize data source control panel
   initDataSourceControls();
