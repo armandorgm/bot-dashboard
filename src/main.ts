@@ -592,6 +592,52 @@ function drawChart() {
         ctx.beginPath(); ctx.arc(m.x, m.y, 4, 0, 2 * Math.PI);
         ctx.fillStyle = '#60a5fa'; ctx.fill(); ctx.strokeStyle = '#3b82f6'; ctx.stroke();
       }
+
+      // Decoraciones para ordenes pertenecientes a procesos Chase v2 activos
+      if (evt.orderId) {
+        const chaseProc = activeChaseProcesses.find(p =>
+          p.status !== 'COMPLETED' && p.status !== 'ABORTED' &&
+          (String(p.entry_order_id) === String(evt.orderId) || String(p.exit_order_id) === String(evt.orderId))
+        );
+
+        if (chaseProc) {
+          const isEntry = String(chaseProc.entry_order_id) === String(evt.orderId);
+          const roleColor = isEntry ? '#06b6d4' : '#10b981';
+          const roleLabel = isEntry ? 'E' : 'X';
+
+          ctx.save();
+          // 1. Anillo punteado de rol rodeando el marcador
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, 10, 0, 2 * Math.PI);
+          ctx.strokeStyle = roleColor;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([2, 2]);
+          ctx.stroke();
+
+          // 2. Node Dot en el centro/vértice (conector visual)
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, 2.5, 0, 2 * Math.PI);
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+
+          // 3. Micro-badge "E" / "X"
+          const badgeX = m.x + 8;
+          const badgeY = m.y - 8;
+          ctx.fillStyle = roleColor;
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.arc(badgeX, badgeY, 5, 0, 2 * Math.PI);
+          ctx.fill();
+
+          ctx.fillStyle = '#0f172a';
+          ctx.font = 'bold 7px "JetBrains Mono", monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(roleLabel, badgeX, badgeY);
+
+          ctx.restore();
+        }
+      }
     }
   }
 
