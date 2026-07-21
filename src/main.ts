@@ -636,6 +636,35 @@ function drawChart() {
           ctx.fillText(roleLabel, badgeX, badgeY);
 
           ctx.restore();
+        } else if (['buy', 'buy_placed', 'sell', 'sell_placed'].includes(evt.type)) {
+          // Adorno para ordenes huérfanas / manuales / externas (no vinculadas a Chase activo)
+          const roleColor = '#c084fc'; // Púrpura/Violeta para huérfano / manual
+          const badgeX = m.x + 8;
+          const badgeY = m.y - 8;
+
+          ctx.save();
+          // 1. Anillo punteado discreto
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, 9, 0, 2 * Math.PI);
+          ctx.strokeStyle = 'rgba(192, 132, 252, 0.45)';
+          ctx.lineWidth = 1.0;
+          ctx.setLineDash([2, 3]);
+          ctx.stroke();
+
+          // 2. Micro-badge flotante con el símbolo '?' (Huérfana / Externa)
+          ctx.fillStyle = roleColor;
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.arc(badgeX, badgeY, 4.5, 0, 2 * Math.PI);
+          ctx.fill();
+
+          ctx.fillStyle = '#0f172a';
+          ctx.font = 'bold 7px "JetBrains Mono", monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('?', badgeX, badgeY);
+
+          ctx.restore();
         }
       }
     }
