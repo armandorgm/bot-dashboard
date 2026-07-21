@@ -263,7 +263,8 @@ body {
 
 /* LOG SECTION */
 .log-section {
-  height: 200px;
+  height: 400px;
+  min-height: 350px;
   background: var(--panel-bg);
   border: 1px solid var(--border-color);
   border-radius: 12px;
@@ -293,6 +294,7 @@ body {
 
 .log-console {
   flex: 1;
+  min-height: 280px;
   overflow-y: auto;
   font-family: var(--font-mono);
   font-size: 0.75rem;

@@ -1134,13 +1134,20 @@ function renderOpenOrders() {
   });
 }
 
+let lastLoggedProcessCount = -1;
+
 async function fetchActivePipelines() {
   const parentPort = config.parent_api_port || "8000";
   try {
     const response = await fetch(`http://127.0.0.1:${parentPort}/api/pipelines/active`);
     if (response.ok) {
+      const rawText = await response.clone().text();
       const data: ChasePipelineProcess[] = await response.json();
       activeChaseProcesses = data;
+      if (data.length !== lastLoggedProcessCount) {
+        lastLoggedProcessCount = data.length;
+        addLog(`[ACTIVE PIPELINES API] ${data.length} procesos activos recibidos: ${rawText}`, 'info');
+      }
       drawChart();
     }
   } catch (err) {
