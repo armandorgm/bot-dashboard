@@ -200,7 +200,6 @@ body {
   color: var(--blue-neon);
 }
 
-/* CHART AREA */
 .chart-section {
   flex: 1;
   min-height: 250px;
@@ -212,6 +211,9 @@ body {
   flex-direction: column;
   gap: 12px;
   backdrop-filter: blur(10px);
+  overflow: visible;
+  position: relative;
+  z-index: 10;
 }
 
 .section-header {

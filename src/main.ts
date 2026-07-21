@@ -1037,23 +1037,6 @@ window.addEventListener("DOMContentLoaded", async () => {
 
       if (hoverMarker) {
         if (tooltipEl) {
-          tooltipEl.style.display = 'block';
-          
-          const tooltipWidth = 250;
-          const tooltipHeight = 80;
-          let leftPos = mouseX! + 15;
-          let topPos = mouseY! + 15;
-          
-          if (mouseX! > rect.width - tooltipWidth) {
-            leftPos = mouseX! - tooltipWidth - 10;
-          }
-          if (mouseY! > rect.height - tooltipHeight) {
-            topPos = mouseY! - tooltipHeight - 10;
-          }
-          
-          tooltipEl.style.left = `${leftPos}px`;
-          tooltipEl.style.top = `${topPos}px`;
-          
           let content = `<div style="font-weight: bold; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px; margin-bottom: 4px; color: #60a5fa;">`;
           content += hoverMarker.events.length > 1 ? `Cluster: ${hoverMarker.events.length} Eventos` : `Detalle del Evento`;
           content += `</div>`;
@@ -1072,6 +1055,26 @@ window.addEventListener("DOMContentLoaded", async () => {
           });
           
           tooltipEl.innerHTML = content;
+          tooltipEl.style.display = 'block';
+
+          const tooltipWidth = tooltipEl.offsetWidth || 260;
+          const tooltipHeight = tooltipEl.offsetHeight || 120;
+
+          let leftPos = e.clientX + 15;
+          let topPos = e.clientY + 15;
+          
+          if (e.clientX + tooltipWidth + 15 > window.innerWidth) {
+            leftPos = e.clientX - tooltipWidth - 15;
+          }
+          if (e.clientY + tooltipHeight + 15 > window.innerHeight) {
+            topPos = e.clientY - tooltipHeight - 15;
+          }
+
+          if (leftPos < 10) leftPos = 10;
+          if (topPos < 10) topPos = 10;
+          
+          tooltipEl.style.left = `${leftPos}px`;
+          tooltipEl.style.top = `${topPos}px`;
         }
       } else {
         if (tooltipEl) tooltipEl.style.display = 'none';
