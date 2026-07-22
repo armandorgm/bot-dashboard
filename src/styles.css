@@ -169,8 +169,28 @@ body {
 /* STATS STRIP */
 .stats-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 12px;
+}
+
+.session-pnl-card .card-price,
+.unrealized-pnl-card .card-price {
+  font-weight: 700;
+  transition: color 0.3s ease;
+}
+
+.pnl-positive {
+  color: var(--green-neon);
+  text-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+}
+
+.pnl-negative {
+  color: var(--red-neon);
+  text-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+}
+
+.pnl-neutral {
+  color: var(--text-primary);
 }
 
 .stats-card {

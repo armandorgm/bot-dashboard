@@ -1,5 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { SessionMetricsTracker } from "./services/sessionMetrics";
+import { CoinAnimationManager } from "./services/coinAnimation";
+
+// Instantiate decoupled services in memory
+const sessionMetrics = new SessionMetricsTracker();
+const coinAnimationManager = new CoinAnimationManager();
 
 
 interface InstanceConfig {
@@ -135,6 +141,8 @@ let placedSuccessValEl: HTMLElement | null = null;
 let placedFailedValEl: HTMLElement | null = null;
 let modifiedValEl: HTMLElement | null = null;
 let buySellValEl: HTMLElement | null = null;
+let sessionPnLValEl: HTMLElement | null = null;
+let unrealizedPnLValEl: HTMLElement | null = null;
 
 let canvasEl: HTMLCanvasElement | null = null;
 let samplesSelectEl: HTMLSelectElement | null = null;
@@ -674,6 +682,9 @@ function drawChart() {
     }
   }
 
+  // ── 6.5. Render 10-second coin animations for closed processes ──────────
+  coinAnimationManager.render(ctx, decimals);
+
   // ── 7. Right Y-axis price flags (Bid / Ask) ──────────────────────────────
   const latest = history[history.length - 1];
   const yBid   = getY(latest.bid);
@@ -863,6 +874,10 @@ function connectBinancePublicWs(symbol: string) {
 
       history.push({ time: Date.now(), bid: bidVal, ask: askVal });
       pruneHistory();
+
+      // Update Session Unrealized PnL based on live ticker and memory positions
+      updatePnLDisplay(bidVal, askVal);
+
       drawChart();
     } catch (err) {
       console.error("[BINANCE-PUBLIC-WS] Parse error:", err);
@@ -1136,6 +1151,10 @@ function renderOpenOrders() {
 
 let lastLoggedProcessCount = -1;
 
+// Set to keep track of process IDs seen in active state during this session
+const trackedSessionProcessIds = new Set<number>();
+const completedSessionProcessIds = new Set<number>();
+
 async function fetchActivePipelines() {
   const parentPort = config.parent_api_port || "8000";
   try {
@@ -1143,11 +1162,82 @@ async function fetchActivePipelines() {
     if (response.ok) {
       const rawText = await response.clone().text();
       const data: ChasePipelineProcess[] = await response.json();
+
+      // Register new active processes in the SessionMetricsTracker
+      data.forEach((proc) => {
+        if (proc.status !== 'COMPLETED' && proc.status !== 'ABORTED') {
+          trackedSessionProcessIds.add(proc.id);
+          const entryPrice = proc.last_order_price || proc.initial_price || 0;
+          if (entryPrice > 0) {
+            sessionMetrics.registerPosition({
+              processId: proc.id,
+              entryPrice: entryPrice,
+              amount: proc.amount || 0,
+              side: proc.side || 'BUY',
+              createdAt: Date.now()
+            });
+          }
+        }
+      });
+
+      // Detect processes that transition to COMPLETED or were recently finished
+      for (const procId of Array.from(trackedSessionProcessIds)) {
+        const proc = data.find(p => p.id === procId);
+        // If process is now COMPLETED or no longer present in active list
+        if (proc && proc.status === 'COMPLETED' && !completedSessionProcessIds.has(procId)) {
+          completedSessionProcessIds.add(procId);
+          trackedSessionProcessIds.delete(procId);
+
+          const pos = sessionMetrics.closePosition(procId);
+          const entryPrice = pos ? pos.entryPrice : (proc.initial_price || proc.last_order_price || 0);
+          const exitPrice = proc.last_tick_price || proc.last_order_price || entryPrice;
+          const amount = pos ? pos.amount : (proc.amount || 1);
+          const side = pos ? pos.side : (proc.side || 'BUY');
+
+          const isLong = side.toUpperCase() === 'BUY' || side.toUpperCase() === 'LONG';
+          const priceDiff = isLong ? (exitPrice - entryPrice) : (entryPrice - exitPrice);
+          const tradePnL = priceDiff * amount;
+
+          // Add to Session Realized PnL
+          sessionMetrics.addRealizedPnL(tradePnL);
+          addLog(`[SESSION PnL] Process #${procId} COMPLETED. Trade PnL: $${tradePnL.toFixed(4)}`, tradePnL >= 0 ? 'success' : 'warn');
+
+          // Find anchor canvas coordinates for exit or entry marker
+          let anchorX = canvasEl ? canvasEl.width * 0.5 : 200;
+          let anchorY = canvasEl ? canvasEl.height * 0.5 : 150;
+
+          if (proc.exit_order_id) {
+            const foundMarker = activeMarkers.find(m => m.events.some(e => String(e.orderId) === String(proc.exit_order_id)));
+            if (foundMarker) {
+              anchorX = foundMarker.x;
+              anchorY = foundMarker.y;
+            }
+          }
+
+          // Trigger 10-second golden coin animation
+          coinAnimationManager.triggerCoinAnimation(
+            procId,
+            entryPrice,
+            exitPrice,
+            amount,
+            side,
+            anchorX,
+            anchorY
+          );
+        }
+      }
+
       activeChaseProcesses = data;
       if (data.length !== lastLoggedProcessCount) {
         lastLoggedProcessCount = data.length;
         addLog(`[ACTIVE PIPELINES API] ${data.length} procesos activos recibidos: ${rawText}`, 'info');
       }
+
+      // Update PnL displays
+      const latestBid = history.length > 0 ? history[history.length - 1].bid : 0;
+      const latestAsk = history.length > 0 ? history[history.length - 1].ask : 0;
+      updatePnLDisplay(latestBid, latestAsk);
+
       drawChart();
     }
   } catch (err) {
@@ -1216,6 +1306,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   placedFailedValEl = document.getElementById("placed-failed-val");
   modifiedValEl = document.getElementById("modified-val");
   buySellValEl = document.getElementById("buy-sell-val");
+  sessionPnLValEl = document.getElementById("session-pnl-val");
+  unrealizedPnLValEl = document.getElementById("unrealized-pnl-val");
 
   canvasEl = document.getElementById("hft-chart") as HTMLCanvasElement;
   modsListEl = document.getElementById("mods-list");
@@ -1686,5 +1778,26 @@ function initDataSourceControls() {
       for (const key of ALL_KEYS) setDataSource(key, false);
       addLog('[DATA FEED] Todas las fuentes desactivadas.', 'warn');
     });
+  }
+}
+
+/**
+ * Updates Session Realized PnL and Unrealized PnL DOM elements
+ * with formatted currency and status neon colors.
+ */
+function updatePnLDisplay(currentBid: number, currentAsk: number) {
+  const realizedPnL = sessionMetrics.getRealizedPnL();
+  const unrealizedPnL = sessionMetrics.calculateUnrealizedPnL(currentBid, currentAsk);
+
+  if (sessionPnLValEl) {
+    const sign = realizedPnL > 0 ? '+' : '';
+    sessionPnLValEl.innerText = `$${sign}${realizedPnL.toFixed(4)}`;
+    sessionPnLValEl.className = 'card-price ' + (realizedPnL > 0 ? 'pnl-positive' : realizedPnL < 0 ? 'pnl-negative' : 'pnl-neutral');
+  }
+
+  if (unrealizedPnLValEl) {
+    const sign = unrealizedPnL > 0 ? '+' : '';
+    unrealizedPnLValEl.innerText = `$${sign}${unrealizedPnL.toFixed(4)}`;
+    unrealizedPnLValEl.className = 'card-price ' + (unrealizedPnL > 0 ? 'pnl-positive' : unrealizedPnL < 0 ? 'pnl-negative' : 'pnl-neutral');
   }
 }
