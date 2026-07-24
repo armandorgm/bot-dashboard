@@ -2,10 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { SessionMetricsTracker } from "./services/sessionMetrics";
 import { CoinAnimationManager } from "./services/coinAnimation";
+import { ChartDisplayConfig } from "./services/chartDisplayConfig";
+import { ChartViewportController } from "./services/chartViewportController";
 
 // Instantiate decoupled services in memory
 const sessionMetrics = new SessionMetricsTracker();
 const coinAnimationManager = new CoinAnimationManager();
+const chartDisplayConfig = new ChartDisplayConfig(() => drawChart());
+const chartViewportController = new ChartViewportController(110);
 
 
 interface InstanceConfig {
@@ -75,22 +79,13 @@ let hftEvents: HftEvent[] = [];
 let openOrders: OpenOrder[] = [];
 let activeChaseProcesses: ChasePipelineProcess[] = [];
 let maxPoints = 150;
-let xAdvanceMode: 'tick' | 'second' = 'tick';
+let xAdvanceMode: 'tick' | 'second' = 'second';
 let animationFrameId: number | null = null;
 let tickTimes: number[] = [];
 let hz = 0;
 let mouseX: number | null = null;
 let mouseY: number | null = null;
 let activeMarkers: VisualMarker[] = [];
-
-// ── Y-Axis linear zoom state (Binance-style drag) ──────────────────────────
-let yCenter: number | null = null;
-let yRange:  number | null = null;
-
-// Drag state for the right Y-axis panel
-let yDragActive  = false;
-let yDragStartY  = 0;       // canvas Y at mousedown
-let yDragStartRange = 0;    // yRange snapshot at mousedown
 
 // WebSocket reference for direct public Binance connection
 let binancePublicWs: WebSocket | null = null;
@@ -211,7 +206,7 @@ function drawChart() {
 
   if (history.length < 2) {
     ctx.fillStyle = '#475569';
-    ctx.font = '13px "JetBrains Mono", monospace';
+    ctx.font = chartDisplayConfig.getScaledFont(13);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('WAITING FOR TICKER FEED DATA FROM BOT...', width / 2, height / 2);
@@ -227,13 +222,13 @@ function drawChart() {
   }
   if (dataMin === Infinity || dataMax === -Infinity) { dataMin = 0; dataMax = 0.004; }
 
-  // ── Linear Y scale ──────────────────────────────────────────────────────
-  // If user has never dragged: auto-fit with 10% padding on each side.
+  // ── Linear Y scale (Viewport State from Controller) ────────────────────
+  const viewport = chartViewportController.getState();
   const autoHalf   = (dataMax - dataMin) * 0.6 || dataMin * 0.05 || 0.0001;
   const autoCenter = (dataMax + dataMin) / 2;
 
-  const yCtr = yCenter !== null ? yCenter : autoCenter;
-  const yHalf = yRange !== null ? yRange  : autoHalf;
+  const yCtr = viewport.yCenter !== null ? viewport.yCenter : autoCenter;
+  const yHalf = viewport.yRange !== null ? viewport.yRange : autoHalf;
 
   const yMin = yCtr - yHalf;
   const yMax = yCtr + yHalf;
@@ -245,30 +240,36 @@ function drawChart() {
   const chartBottom = height - 35;
   const chartH      = chartBottom - chartTop;
 
-  // Linear mappers ─────────────────────────────────────────────────────────
+  // Linear mappers (X-axis unlinked from live advance when user pans) ──────
   const now = Date.now();
   const timeWindow = maxPoints * 1000; // window in ms
-  const tMin = xAdvanceMode === 'second' ? now - timeWindow : (history.length > 0 ? history[0].time : now);
-  const tMax = xAdvanceMode === 'second' ? now : (history.length > 0 ? history[history.length - 1].time : now);
+  const xOffset = viewport.xOffsetMs || 0;
+
+  // Calculate slice indices for tick mode
+  const endIdx = Math.max(1, history.length - viewport.sampleOffset);
+  const startIdx = Math.max(0, endIdx - maxPoints);
+
+  const liveEndTime = xAdvanceMode === 'second'
+    ? now
+    : (history.length > 0 ? history[Math.min(history.length - 1, endIdx - 1)].time : now);
+
+  const tMax = liveEndTime - xOffset;
+  const tMin = xAdvanceMode === 'second'
+    ? tMax - timeWindow
+    : (history.length > startIdx ? history[startIdx].time : tMax - timeWindow);
 
   const getXForTime = (time: number) => {
     if (xAdvanceMode === 'second') {
       if (time <= tMin) return 0;
       if (time >= tMax) return chartWidth;
-      return ((time - tMin) / timeWindow) * chartWidth;
+      return ((time - tMin) / Math.max(1, tMax - tMin)) * chartWidth;
     } else {
       if (history.length === 0) return 0;
-      if (time <= history[0].time) return 0;
-      if (time >= history[history.length - 1].time) return chartWidth;
-      for (let i = 0; i < history.length - 1; i++) {
-        const t0 = history[i].time;
-        const t1 = history[i + 1].time;
-        if (time >= t0 && time <= t1) {
-          const ratio = (time - t0) / (t1 - t0);
-          return (i + ratio) * (chartWidth / (maxPoints - 1));
-        }
-      }
-      return chartWidth;
+      const minT = history[startIdx]?.time ?? history[0].time;
+      const maxT = history[Math.min(history.length - 1, endIdx - 1)]?.time ?? history[history.length - 1].time;
+      if (time <= minT) return 0;
+      if (time >= maxT) return chartWidth;
+      return ((time - minT) / Math.max(1, maxT - minT)) * chartWidth;
     }
   };
 
@@ -277,22 +278,23 @@ function drawChart() {
       if (index < 0 || index >= history.length) return 0;
       return getXForTime(history[index].time);
     } else {
-      return index * (chartWidth / (maxPoints - 1));
+      const relIdx = index - startIdx;
+      return relIdx * (chartWidth / Math.max(1, maxPoints - 1));
     }
   };
 
   const getTimeForX = (x: number): number => {
     if (xAdvanceMode === 'second') {
-      return tMin + (x / chartWidth) * timeWindow;
+      return tMin + (x / Math.max(1, chartWidth)) * Math.max(1, tMax - tMin);
     } else {
-      const shiftX = chartWidth / (maxPoints - 1);
-      const index = x / shiftX;
-      const i0 = Math.floor(index);
-      const i1 = Math.min(history.length - 1, Math.ceil(index));
+      const relIndex = (x / Math.max(1, chartWidth)) * (maxPoints - 1);
+      const exactIndex = startIdx + relIndex;
+      const i0 = Math.floor(exactIndex);
+      const i1 = Math.min(history.length - 1, Math.ceil(exactIndex));
       if (i0 >= 0 && i1 < history.length) {
         const t0 = history[i0].time;
         const t1 = history[i1].time;
-        return t0 + (index - i0) * (t1 - t0);
+        return t0 + (exactIndex - i0) * (t1 - t0);
       }
       return history.length > 0 ? history[history.length - 1].time : Date.now();
     }
@@ -303,14 +305,15 @@ function drawChart() {
   };
 
   // ── Y-axis drag handle highlight ─────────────────────────────────────────
-  ctx.fillStyle = yDragActive
+  const isYZoomActive = chartViewportController.isZooming();
+  ctx.fillStyle = isYZoomActive
     ? 'rgba(99, 102, 241, 0.10)'
     : 'rgba(99, 102, 241, 0.03)';
   ctx.fillRect(chartWidth, 0, rightMargin, height);
 
   const gripX = chartWidth + rightMargin / 2;
   const gripY = height / 2;
-  ctx.strokeStyle = yDragActive
+  ctx.strokeStyle = isYZoomActive
     ? 'rgba(129, 140, 248, 0.7)'
     : 'rgba(99, 102, 241, 0.25)';
   ctx.lineWidth = 1.5;
@@ -321,10 +324,10 @@ function drawChart() {
     ctx.lineTo(gripX + 10, gripY + offset);
     ctx.stroke();
   }
-  ctx.fillStyle = yDragActive
+  ctx.fillStyle = isYZoomActive
     ? 'rgba(129, 140, 248, 0.9)'
     : 'rgba(99, 102, 241, 0.35)';
-  ctx.font = '7px "JetBrains Mono", monospace';
+  ctx.font = chartDisplayConfig.getScaledFont(7);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('↕ DRAG', gripX, gripY + 18);
@@ -336,7 +339,7 @@ function drawChart() {
   ctx.lineWidth = 1;
   ctx.setLineDash([]);
   ctx.fillStyle = 'rgba(148, 163, 184, 0.5)';
-  ctx.font = '9px "JetBrains Mono", monospace';
+  ctx.font = chartDisplayConfig.getScaledFont(9);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
 
@@ -358,7 +361,7 @@ function drawChart() {
   ctx.fillStyle = 'rgba(148, 163, 184, 0.35)';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.font = '8px "JetBrains Mono", monospace';
+  ctx.font = chartDisplayConfig.getScaledFont(8);
   const vGridCount = 4;
   for (let i = 0; i <= vGridCount; i++) {
     const frac = i / vGridCount;
@@ -537,15 +540,17 @@ function drawChart() {
       const midY = (entryY + targetY) / 2;
       const badgeText = `CHASE #${proc.id} | ${proc.sub_status || proc.status}`;
       
-      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      ctx.font = chartDisplayConfig.getScaledFont(8, "'JetBrains Mono', monospace", true);
       const textWidth = ctx.measureText(badgeText).width;
       
+      const badgePaddingH = chartDisplayConfig.getScaledSize(6);
+      const badgeH = chartDisplayConfig.getScaledSize(16);
       ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
       ctx.strokeStyle = lineColor;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = chartDisplayConfig.getScaledSize(1);
       ctx.setLineDash([]);
       ctx.beginPath();
-      ctx.roundRect(midX - textWidth / 2 - 6, midY - 8, textWidth + 12, 16, 4);
+      ctx.roundRect(midX - textWidth / 2 - badgePaddingH, midY - badgeH / 2, textWidth + badgePaddingH * 2, badgeH, 4);
       ctx.fill();
       ctx.stroke();
 
@@ -560,32 +565,34 @@ function drawChart() {
 
   // ── 6. Draw event markers ────────────────────────────────────────────────
   for (const m of activeMarkers) {
+    const clusterR = chartDisplayConfig.getScaledSize(8);
+    const triR = chartDisplayConfig.getScaledSize(5);
     if (m.events.length > 1) {
       ctx.beginPath();
-      ctx.arc(m.x, m.y, 8, 0, 2 * Math.PI);
+      ctx.arc(m.x, m.y, clusterR, 0, 2 * Math.PI);
       ctx.fillStyle = '#4f46e5';
       ctx.fill();
       ctx.strokeStyle = '#818cf8';
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = chartDisplayConfig.getScaledSize(1.5);
       ctx.stroke();
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      ctx.font = chartDisplayConfig.getScaledFont(8, "'JetBrains Mono', monospace", true);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(m.events.length.toString(), m.x, m.y);
     } else {
       const evt = m.events[0];
       if (evt.type === 'buy') {
-        ctx.beginPath(); ctx.moveTo(m.x, m.y - 6); ctx.lineTo(m.x - 5, m.y + 4); ctx.lineTo(m.x + 5, m.y + 4); ctx.closePath();
+        ctx.beginPath(); ctx.moveTo(m.x, m.y - triR - 1); ctx.lineTo(m.x - triR, m.y + triR); ctx.lineTo(m.x + triR, m.y + triR); ctx.closePath();
         ctx.fillStyle = '#10b981'; ctx.fill(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.5; ctx.stroke();
       } else if (evt.type === 'buy_placed') {
-        ctx.beginPath(); ctx.moveTo(m.x, m.y - 6); ctx.lineTo(m.x - 5, m.y + 4); ctx.lineTo(m.x + 5, m.y + 4); ctx.closePath();
+        ctx.beginPath(); ctx.moveTo(m.x, m.y - triR - 1); ctx.lineTo(m.x - triR, m.y + triR); ctx.lineTo(m.x + triR, m.y + triR); ctx.closePath();
         ctx.strokeStyle = '#10b981'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.fillStyle = 'rgba(16,185,129,0.15)'; ctx.fill();
       } else if (evt.type === 'sell') {
-        ctx.beginPath(); ctx.moveTo(m.x, m.y + 6); ctx.lineTo(m.x - 5, m.y - 4); ctx.lineTo(m.x + 5, m.y - 4); ctx.closePath();
+        ctx.beginPath(); ctx.moveTo(m.x, m.y + triR + 1); ctx.lineTo(m.x - triR, m.y - triR); ctx.lineTo(m.x + triR, m.y - triR); ctx.closePath();
         ctx.fillStyle = '#ef4444'; ctx.fill(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.5; ctx.stroke();
       } else if (evt.type === 'sell_placed') {
-        ctx.beginPath(); ctx.moveTo(m.x, m.y + 6); ctx.lineTo(m.x - 5, m.y - 4); ctx.lineTo(m.x + 5, m.y - 4); ctx.closePath();
+        ctx.beginPath(); ctx.moveTo(m.x, m.y + triR + 1); ctx.lineTo(m.x - triR, m.y - triR); ctx.lineTo(m.x + triR, m.y - triR); ctx.closePath();
         ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.fillStyle = 'rgba(239,68,68,0.15)'; ctx.fill();
       } else if (evt.type === 'cancel' || evt.type === 'cancel_buy' || evt.type === 'cancel_sell') {
         const cc = evt.type === 'cancel_buy' ? '#10b981' : evt.type === 'cancel_sell' ? '#ef4444' : '#f59e0b';
@@ -595,9 +602,9 @@ function drawChart() {
         const cc = evt.type === 'cancel_buy_failed' ? '#10b981' : '#ef4444';
         ctx.strokeStyle = cc; ctx.lineWidth = 2.5;
         ctx.beginPath(); ctx.moveTo(m.x-5,m.y-5); ctx.lineTo(m.x+5,m.y+5); ctx.moveTo(m.x+5,m.y-5); ctx.lineTo(m.x-5,m.y+5); ctx.stroke();
-        ctx.beginPath(); ctx.arc(m.x, m.y, 8, 0, 2 * Math.PI); ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.beginPath(); ctx.arc(m.x, m.y, clusterR, 0, 2 * Math.PI); ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5; ctx.stroke();
       } else if (evt.type === 'query') {
-        ctx.beginPath(); ctx.arc(m.x, m.y, 4, 0, 2 * Math.PI);
+        ctx.beginPath(); ctx.arc(m.x, m.y, chartDisplayConfig.getScaledSize(4), 0, 2 * Math.PI);
         ctx.fillStyle = '#60a5fa'; ctx.fill(); ctx.strokeStyle = '#3b82f6'; ctx.stroke();
       }
 
@@ -616,7 +623,7 @@ function drawChart() {
           ctx.save();
           // 1. Anillo punteado de rol rodeando el marcador
           ctx.beginPath();
-          ctx.arc(m.x, m.y, 10, 0, 2 * Math.PI);
+          ctx.arc(m.x, m.y, chartDisplayConfig.getScaledSize(10), 0, 2 * Math.PI);
           ctx.strokeStyle = roleColor;
           ctx.lineWidth = 1.5;
           ctx.setLineDash([2, 2]);
@@ -624,21 +631,23 @@ function drawChart() {
 
           // 2. Node Dot en el centro/vértice (conector visual)
           ctx.beginPath();
-          ctx.arc(m.x, m.y, 2.5, 0, 2 * Math.PI);
+          ctx.arc(m.x, m.y, chartDisplayConfig.getScaledSize(2.5), 0, 2 * Math.PI);
           ctx.fillStyle = '#ffffff';
           ctx.fill();
 
           // 3. Micro-badge "E" / "X"
-          const badgeX = m.x + 8;
-          const badgeY = m.y - 8;
+          const badgeOffset = chartDisplayConfig.getScaledSize(8);
+          const badgeRadius = chartDisplayConfig.getScaledSize(5);
+          const badgeX = m.x + badgeOffset;
+          const badgeY = m.y - badgeOffset;
           ctx.fillStyle = roleColor;
           ctx.setLineDash([]);
           ctx.beginPath();
-          ctx.arc(badgeX, badgeY, 5, 0, 2 * Math.PI);
+          ctx.arc(badgeX, badgeY, badgeRadius, 0, 2 * Math.PI);
           ctx.fill();
 
           ctx.fillStyle = '#0f172a';
-          ctx.font = 'bold 7px "JetBrains Mono", monospace';
+          ctx.font = chartDisplayConfig.getScaledFont(7, "'JetBrains Mono', monospace", true);
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(roleLabel, badgeX, badgeY);
@@ -650,13 +659,15 @@ function drawChart() {
           if (eventAgeMs >= 6000) {
             // Adorno para ordenes verdaderamente huérfanas / manuales / externas (no vinculadas tras 6s)
             const roleColor = '#c084fc'; // Púrpura/Violeta para huérfano / manual
-            const badgeX = m.x + 8;
-            const badgeY = m.y - 8;
+            const badgeOffset = chartDisplayConfig.getScaledSize(8);
+            const badgeRadius = chartDisplayConfig.getScaledSize(4.5);
+            const badgeX = m.x + badgeOffset;
+            const badgeY = m.y - badgeOffset;
 
             ctx.save();
             // 1. Anillo punteado discreto
             ctx.beginPath();
-            ctx.arc(m.x, m.y, 9, 0, 2 * Math.PI);
+            ctx.arc(m.x, m.y, chartDisplayConfig.getScaledSize(9), 0, 2 * Math.PI);
             ctx.strokeStyle = 'rgba(192, 132, 252, 0.45)';
             ctx.lineWidth = 1.0;
             ctx.setLineDash([2, 3]);
@@ -666,11 +677,11 @@ function drawChart() {
             ctx.fillStyle = roleColor;
             ctx.setLineDash([]);
             ctx.beginPath();
-            ctx.arc(badgeX, badgeY, 4.5, 0, 2 * Math.PI);
+            ctx.arc(badgeX, badgeY, badgeRadius, 0, 2 * Math.PI);
             ctx.fill();
 
             ctx.fillStyle = '#0f172a';
-            ctx.font = 'bold 7px "JetBrains Mono", monospace';
+            ctx.font = chartDisplayConfig.getScaledFont(7, "'JetBrains Mono', monospace", true);
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('?', badgeX, badgeY);
@@ -690,7 +701,7 @@ function drawChart() {
   const yBid   = getY(latest.bid);
   const yAsk   = getY(latest.ask);
 
-  ctx.font = 'bold 8px "JetBrains Mono", monospace';
+  ctx.font = chartDisplayConfig.getScaledFont(8, "'JetBrains Mono', monospace", true);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
 
@@ -708,11 +719,11 @@ function drawChart() {
   ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
   ctx.fillRect(0, height - 22, width, 22);
   ctx.fillStyle = '#94a3b8';
-  ctx.font = '10px "JetBrains Mono", monospace';
+  ctx.font = chartDisplayConfig.getScaledFont(10);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   const spread = latest.ask - latest.bid;
-  const zoomLabel = yRange !== null ? ` | ZOOM: ${(autoHalf / yHalf).toFixed(1)}x` : '';
+  const zoomLabel = viewport.yRange !== null ? ` | ZOOM: ${(autoHalf / yHalf).toFixed(1)}x` : '';
   ctx.fillText(
     `SPREAD: ${spread.toFixed(decimals)} | MIN: ${dataMin.toFixed(decimals)} | MAX: ${dataMax.toFixed(decimals)} | MOTOR: ${hz} Hz | MUESTRAS: ${history.length}/${maxPoints}${zoomLabel}`,
     10, height - 11
@@ -759,7 +770,7 @@ function drawChart() {
 
     // Time badge (X axis)
     const timeStr = new Date(snappedTime).toLocaleTimeString('es-ES', { hour12: false });
-    ctx.font = '9px "JetBrains Mono", monospace';
+    ctx.font = chartDisplayConfig.getScaledFont(9);
     const tBadgeW = ctx.measureText(timeStr).width + 10;
     const tBadgeH = 14;
     const tBadgeX = Math.max(0, Math.min(chartWidth - tBadgeW, snapX - tBadgeW / 2));
@@ -789,15 +800,9 @@ function drawChart() {
 }
 
 function pruneHistory() {
-  if (xAdvanceMode === 'second') {
-    const timeLimit = Date.now() - (maxPoints * 1000);
-    while (history.length > 2 && history[1].time < timeLimit) {
-      history.shift();
-    }
-  } else {
-    while (history.length > maxPoints) {
-      history.shift();
-    }
+  const maxBuffer = Math.max(4000, maxPoints * 2);
+  while (history.length > maxBuffer) {
+    history.shift();
   }
 }
 
@@ -1318,6 +1323,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   clearLogBtnEl = document.getElementById("clear-log-btn");
 
   if (canvasEl) {
+    // ── Mouse hover tracking for Tooltip ────────────────────────────────────
     canvasEl.addEventListener("mousemove", (e: MouseEvent) => {
       const rect = canvasEl!.getBoundingClientRect();
       mouseX = e.clientX - rect.left;
@@ -1336,23 +1342,59 @@ window.addEventListener("DOMContentLoaded", async () => {
 
       if (hoverMarker) {
         if (tooltipEl) {
-          let content = `<div style="font-weight: bold; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px; margin-bottom: 4px; color: #60a5fa;">`;
-          content += hoverMarker.events.length > 1 ? `Cluster: ${hoverMarker.events.length} Eventos` : `Detalle del Evento`;
-          content += `</div>`;
-          
+          const isCluster = hoverMarker.events.length > 1;
+          let content = `<div style="font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 5px; margin-bottom: 6px; color: #60a5fa; font-size: 11px; display: flex; justify-content: space-between; align-items: center;">`;
+          content += `<span>${isCluster ? `CLUSTER (${hoverMarker.events.length} Eventos)` : 'DETALLE DEL EVENTO'}</span>`;
+          content += `<span style="color: #94a3b8; font-weight: normal; font-size: 10px;">${config.symbol}</span></div>`;
+
+          content += `<div style="max-height: 240px; overflow-y: auto; padding-right: 2px;">`;
+
           hoverMarker.events.forEach((evt, idx) => {
-            const timeStr = new Date(evt.time).toLocaleTimeString();
+            const timeStr = new Date(evt.time).toLocaleTimeString('es-ES', { hour12: false }) + '.' + String(evt.time % 1000).padStart(3, '0');
             const typeUpper = evt.type.toUpperCase();
-            const priceStr = evt.price ? evt.price.toFixed(config.symbol.toLowerCase().includes("pepe") ? 8 : 4) : '--';
+            const decimals = config.symbol.toLowerCase().includes("pepe") ? 8 : 4;
+            const priceStr = evt.price !== undefined ? evt.price.toFixed(decimals) : '--';
+            const qtyStr = evt.qty !== undefined ? evt.qty.toString() : '--';
+
+            let typeColor = '#60a5fa';
+            if (typeUpper.includes('BUY')) typeColor = '#10b981';
+            else if (typeUpper.includes('SELL')) typeColor = '#ef4444';
+            else if (typeUpper.includes('CANCEL')) typeColor = '#f59e0b';
+
+            let chaseBadgeHtml = '';
+            if (evt.orderId) {
+              const chaseProc = activeChaseProcesses.find(p =>
+                p.status !== 'COMPLETED' && p.status !== 'ABORTED' &&
+                (String(p.entry_order_id) === String(evt.orderId) || String(p.exit_order_id) === String(evt.orderId))
+              );
+              if (chaseProc) {
+                const isEntry = String(chaseProc.entry_order_id) === String(evt.orderId);
+                const roleLbl = isEntry ? 'ENTRY [E]' : 'EXIT [X]';
+                const roleColor = isEntry ? '#06b6d4' : '#10b981';
+                chaseBadgeHtml = `<span style="background: ${roleColor}22; color: ${roleColor}; border: 1px solid ${roleColor}66; padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;">CHASE #${chaseProc.id} (${roleLbl})</span>`;
+              }
+            }
+
+            const borderTop = idx > 0 ? 'border-top: 1px dashed rgba(255,255,255,0.08); margin-top: 6px; padding-top: 6px;' : '';
+
             content += `
-              <div style="font-size: 11px; margin-top: ${idx > 0 ? 6 : 2}px;">
-                <strong>[${timeStr}] ${typeUpper}</strong><br/>
-                Precio: $${priceStr} | Cantidad: ${evt.qty || '--'}<br/>
-                <span style="color: #94a3b8; font-size: 10px;">${evt.detail}</span>
+              <div style="${borderTop} font-size: 11px; line-height: 1.4;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                  <span style="color: ${typeColor}; font-weight: bold;">${typeUpper}</span>
+                  <span style="color: #94a3b8; font-size: 10px;">${timeStr}</span>
+                </div>
+                ${chaseBadgeHtml ? `<div style="margin-bottom: 3px;">${chaseBadgeHtml}</div>` : ''}
+                <table style="width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 2px; color: #cbd5e1;">
+                  ${evt.orderId ? `<tr><td style="color: #64748b; padding-right: 6px; width: 60px;">Order ID:</td><td style="font-weight: 600; font-family: monospace; color: #f1f5f9;">${evt.orderId}</td></tr>` : ''}
+                  <tr><td style="color: #64748b; padding-right: 6px; width: 60px;">Precio:</td><td style="color: #38bdf8; font-weight: 600;">$${priceStr}</td></tr>
+                  <tr><td style="color: #64748b; padding-right: 6px; width: 60px;">Cantidad:</td><td style="color: #f1f5f9;">${qtyStr}</td></tr>
+                  ${evt.detail ? `<tr><td style="color: #64748b; padding-right: 6px; vertical-align: top; width: 60px;">Detalle:</td><td style="color: #94a3b8; word-break: break-word;">${evt.detail}</td></tr>` : ''}
+                </table>
               </div>
             `;
           });
-          
+
+          content += `</div>`;
           tooltipEl.innerHTML = content;
           tooltipEl.style.display = 'block';
 
@@ -1383,72 +1425,83 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
 
     canvasEl.addEventListener("mouseleave", () => {
-      if (!yDragActive) {
-        mouseX = null;
-        mouseY = null;
-      }
+      mouseX = null;
+      mouseY = null;
       if (tooltipEl) tooltipEl.style.display = 'none';
       drawChart();
     });
 
-    // ── Y-Axis drag: zoom in/out by dragging the right price panel ────────────
-    const getRightMarginStart = () => canvasEl!.width - 110;
+    // ── Attach SOLID Viewport Controller (2D Panning & Y Zoom) ─────────────
+    chartViewportController.attach(
+      canvasEl,
+      () => drawChart(),
+      () => {
+        let min = Infinity, max = -Infinity;
+        for (const pt of history) {
+          if (pt.bid > 0 && pt.bid < min) min = pt.bid;
+          if (pt.ask > 0 && pt.ask > max) max = pt.ask;
+        }
+        if (min === Infinity || max === -Infinity) { min = 0; max = 0.004; }
+        return { min, max };
+      },
+      () => maxPoints
+    );
+  }
 
-    canvasEl.addEventListener("mousemove", (eMov: MouseEvent) => {
-      const rect = canvasEl!.getBoundingClientRect();
-      const cx = eMov.clientX - rect.left;
-      if (cx >= getRightMarginStart()) {
-        canvasEl!.style.cursor = 'ns-resize';
-      } else {
-        canvasEl!.style.cursor = 'crosshair';
-      }
-    }, { capture: false });
+  // ── Attach SOLID Scale & Fullscreen Controls ─────────────────────────────
+  const zoomOutBtn = document.getElementById("btn-chart-zoom-out");
+  const zoomInBtn = document.getElementById("btn-chart-zoom-in");
+  const resetScaleBtn = document.getElementById("btn-chart-reset-scale");
+  const scaleLabel = document.getElementById("chart-scale-label");
+  const fullscreenBtn = document.getElementById("btn-chart-fullscreen");
+  const chartSection = document.querySelector(".chart-section") as HTMLElement;
 
-    canvasEl.addEventListener("mousedown", (eDown: MouseEvent) => {
-      const rect = canvasEl!.getBoundingClientRect();
-      const cx = eDown.clientX - rect.left;
-      if (cx < getRightMarginStart()) return;
+  const updateScaleUI = () => {
+    if (scaleLabel) scaleLabel.innerText = chartDisplayConfig.getFormattedScale();
+  };
 
-      // Snapshot current state
-      let dataMin2 = Infinity, dataMax2 = -Infinity;
-      for (const pt of history) {
-        if (pt.bid > 0 && pt.bid < dataMin2) dataMin2 = pt.bid;
-        if (pt.ask > 0 && pt.ask > dataMax2) dataMax2 = pt.ask;
-      }
-      const autoHalf2   = (dataMax2 - dataMin2) * 0.6 || dataMin2 * 0.05 || 0.0001;
-      const autoCenter2 = (dataMax2 + dataMin2) / 2;
+  if (zoomOutBtn) {
+    zoomOutBtn.addEventListener("click", () => {
+      chartDisplayConfig.zoomOut();
+      updateScaleUI();
+    });
+  }
 
-      yDragActive    = true;
-      yDragStartY    = eDown.clientY;
-      yDragStartRange = yRange !== null ? yRange : autoHalf2;
-      if (yCenter === null) yCenter = autoCenter2;
+  if (zoomInBtn) {
+    zoomInBtn.addEventListener("click", () => {
+      chartDisplayConfig.zoomIn();
+      updateScaleUI();
+    });
+  }
 
-      eDown.preventDefault();
-      drawChart();
+  if (resetScaleBtn) {
+    resetScaleBtn.addEventListener("click", () => {
+      chartDisplayConfig.resetZoom();
+      updateScaleUI();
+    });
+  }
+
+  if (fullscreenBtn && chartSection) {
+    const handleFullscreenResize = () => {
+      setTimeout(() => {
+        if (canvasEl && canvasEl.parentElement) {
+          canvasEl.width = canvasEl.parentElement.clientWidth;
+          canvasEl.height = canvasEl.parentElement.clientHeight;
+        }
+        drawChart();
+      }, 60);
+    };
+
+    fullscreenBtn.addEventListener("click", () => {
+      const isFull = chartDisplayConfig.toggleFullscreen(chartSection);
+      fullscreenBtn.innerHTML = isFull ? '⛶ Exit Fullscreen' : '⛶ Fullscreen';
+      handleFullscreenResize();
     });
 
-    window.addEventListener("mousemove", (eMov2: MouseEvent) => {
-      if (!yDragActive) return;
-      const dy = eMov2.clientY - yDragStartY;
-      const scaleFactor = 1 + dy * 0.008;
-      yRange = Math.max(yDragStartRange * 0.0001, yDragStartRange * scaleFactor);
-      drawChart();
-    });
-
-    window.addEventListener("mouseup", () => {
-      if (!yDragActive) return;
-      yDragActive = false;
-      drawChart();
-    });
-
-    canvasEl.addEventListener("dblclick", (eDbl: MouseEvent) => {
-      const rect = canvasEl!.getBoundingClientRect();
-      const cx = eDbl.clientX - rect.left;
-      if (cx < getRightMarginStart()) return;
-      yCenter = null;
-      yRange  = null;
-      addLog('[CHART] Zoom del eje Y restablecido a auto-fit.', 'info');
-      drawChart();
+    document.addEventListener("fullscreenchange", () => {
+      const isFull = chartDisplayConfig.isFullscreen();
+      fullscreenBtn.innerHTML = isFull ? '⛶ Exit Fullscreen' : '⛶ Fullscreen';
+      handleFullscreenResize();
     });
   }
 

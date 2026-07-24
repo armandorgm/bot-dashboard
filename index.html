@@ -100,23 +100,36 @@
             <div class="chart-controls">
               <label for="x-advance-select">X-AXIS:</label>
               <select id="x-advance-select" style="background: #111827; color: #3b82f6; border: 1px solid #3b82f6; border-radius: 4px; padding: 2px 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px; outline: none; cursor: pointer; margin-right: 12px;">
-                <option value="tick" selected>TICK-BASED</option>
-                <option value="second">TIME-BASED</option>
+                <option value="tick">TICK-BASED</option>
+                <option value="second" selected>TIME-BASED</option>
               </select>
               <label for="samples-select">SAMPLES:</label>
-              <select id="samples-select">
+              <select id="samples-select" style="margin-right: 12px;">
                 <option value="50">50</option>
                 <option value="100">100</option>
                 <option value="150" selected>150</option>
                 <option value="200">200</option>
                 <option value="300">300</option>
+                <option value="500">500</option>
+                <option value="1000">1000</option>
+                <option value="1500">1500</option>
+                <option value="2000">2000</option>
               </select>
+
+              <div class="chart-scale-controls">
+                <button id="btn-chart-zoom-out" class="chart-ctrl-btn" title="Disminuir letras e íconos (A-)">A-</button>
+                <span id="chart-scale-label" class="chart-scale-badge" title="Escala actual de texto e íconos">100%</span>
+                <button id="btn-chart-zoom-in" class="chart-ctrl-btn" title="Agrandar letras e íconos (A+)">A+</button>
+                <button id="btn-chart-reset-scale" class="chart-ctrl-btn" title="Restablecer tamaño original">↺</button>
+              </div>
+
+              <button id="btn-chart-fullscreen" class="chart-ctrl-btn btn-fullscreen" title="Ver gráfico en Pantalla Completa">⛶ Fullscreen</button>
             </div>
           </div>
           <div class="canvas-wrapper">
             <canvas id="hft-chart"></canvas>
           </div>
-          <div id="chart-tooltip" style="position: fixed; display: none; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 8px 12px; color: #e2e8f0; font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; box-shadow: 0 4px 12px rgba(0,0,0,0.5); pointer-events: none; z-index: 9999; max-width: 280px; white-space: pre-wrap;"></div>
+          <div id="chart-tooltip" style="position: fixed; display: none; background: rgba(10, 15, 30, 0.96); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 10px 12px; color: #e2e8f0; font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; box-shadow: 0 8px 24px rgba(0,0,0,0.6); pointer-events: none; z-index: 9999; max-width: 340px; min-width: 240px;"></div>
         </section>
 
         <!-- RECENT MODIFICATIONS -->
