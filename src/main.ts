@@ -4,12 +4,14 @@ import { SessionMetricsTracker } from "./services/sessionMetrics";
 import { CoinAnimationManager } from "./services/coinAnimation";
 import { ChartDisplayConfig } from "./services/chartDisplayConfig";
 import { ChartViewportController } from "./services/chartViewportController";
+import { OrderProcessRegistry } from "./services/orderProcessRegistry";
 
 // Instantiate decoupled services in memory
 const sessionMetrics = new SessionMetricsTracker();
 const coinAnimationManager = new CoinAnimationManager();
 const chartDisplayConfig = new ChartDisplayConfig(() => drawChart());
 const chartViewportController = new ChartViewportController(110);
+const orderProcessRegistry = new OrderProcessRegistry();
 
 
 interface InstanceConfig {
@@ -608,17 +610,20 @@ function drawChart() {
         ctx.fillStyle = '#60a5fa'; ctx.fill(); ctx.strokeStyle = '#3b82f6'; ctx.stroke();
       }
 
-      // Decoraciones para ordenes pertenecientes a procesos Chase v2 activos
+      // Decoraciones y marca permanente de por vida del Process ID por orderId
       if (evt.orderId) {
-        const chaseProc = activeChaseProcesses.find(p =>
+        // Consultar registro permanente de por vida o proceso activo
+        const procInfo = orderProcessRegistry.getProcessInfo(evt.orderId);
+        const chaseProc = procInfo ? null : activeChaseProcesses.find(p =>
           p.status !== 'COMPLETED' && p.status !== 'ABORTED' &&
           (String(p.entry_order_id) === String(evt.orderId) || String(p.exit_order_id) === String(evt.orderId))
         );
 
-        if (chaseProc) {
-          const isEntry = String(chaseProc.entry_order_id) === String(evt.orderId);
-          const roleColor = isEntry ? '#06b6d4' : '#10b981';
-          const roleLabel = isEntry ? 'E' : 'X';
+        const processId = procInfo ? procInfo.processId : chaseProc ? chaseProc.id : null;
+        const role = procInfo ? procInfo.role : chaseProc ? (String(chaseProc.entry_order_id) === String(evt.orderId) ? 'E' : 'X') : null;
+
+        if (processId !== null && role !== null) {
+          const roleColor = role === 'E' ? '#06b6d4' : '#10b981';
 
           ctx.save();
           // 1. Anillo punteado de rol rodeando el marcador
@@ -635,22 +640,32 @@ function drawChart() {
           ctx.fillStyle = '#ffffff';
           ctx.fill();
 
-          // 3. Micro-badge "E" / "X"
+          // 3. Micro-badge de por vida mostrando "#ID·E" o "#ID·X"
+          const badgeText = `#${processId}·${role}`;
+          ctx.font = chartDisplayConfig.getScaledFont(7, "'JetBrains Mono', monospace", true);
+          const txtWidth = ctx.measureText(badgeText).width;
+
+          const badgeH = chartDisplayConfig.getScaledSize(12);
+          const badgePadding = chartDisplayConfig.getScaledSize(4);
+          const badgeW = txtWidth + badgePadding * 2;
+
           const badgeOffset = chartDisplayConfig.getScaledSize(8);
-          const badgeRadius = chartDisplayConfig.getScaledSize(5);
           const badgeX = m.x + badgeOffset;
-          const badgeY = m.y - badgeOffset;
-          ctx.fillStyle = roleColor;
+          const badgeY = m.y - badgeOffset - badgeH / 2;
+
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
+          ctx.strokeStyle = roleColor;
+          ctx.lineWidth = 1;
           ctx.setLineDash([]);
           ctx.beginPath();
-          ctx.arc(badgeX, badgeY, badgeRadius, 0, 2 * Math.PI);
+          ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 3);
           ctx.fill();
+          ctx.stroke();
 
-          ctx.fillStyle = '#0f172a';
-          ctx.font = chartDisplayConfig.getScaledFont(7, "'JetBrains Mono', monospace", true);
+          ctx.fillStyle = roleColor;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(roleLabel, badgeX, badgeY);
+          ctx.fillText(badgeText, badgeX + badgeW / 2, badgeY + badgeH / 2);
 
           ctx.restore();
         } else if (['buy', 'buy_placed', 'sell', 'sell_placed'].includes(evt.type)) {
@@ -1232,6 +1247,9 @@ async function fetchActivePipelines() {
         }
       }
 
+      // Permanently register orderId -> processId relations for lifetime display
+      data.forEach(proc => orderProcessRegistry.registerProcess(proc));
+
       activeChaseProcesses = data;
       if (data.length !== lastLoggedProcessCount) {
         lastLoggedProcessCount = data.length;
@@ -1363,15 +1381,19 @@ window.addEventListener("DOMContentLoaded", async () => {
 
             let chaseBadgeHtml = '';
             if (evt.orderId) {
-              const chaseProc = activeChaseProcesses.find(p =>
+              const procInfo = orderProcessRegistry.getProcessInfo(evt.orderId);
+              const chaseProc = procInfo ? null : activeChaseProcesses.find(p =>
                 p.status !== 'COMPLETED' && p.status !== 'ABORTED' &&
                 (String(p.entry_order_id) === String(evt.orderId) || String(p.exit_order_id) === String(evt.orderId))
               );
-              if (chaseProc) {
-                const isEntry = String(chaseProc.entry_order_id) === String(evt.orderId);
-                const roleLbl = isEntry ? 'ENTRY [E]' : 'EXIT [X]';
-                const roleColor = isEntry ? '#06b6d4' : '#10b981';
-                chaseBadgeHtml = `<span style="background: ${roleColor}22; color: ${roleColor}; border: 1px solid ${roleColor}66; padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;">CHASE #${chaseProc.id} (${roleLbl})</span>`;
+
+              const procId = procInfo ? procInfo.processId : chaseProc ? chaseProc.id : null;
+              const role = procInfo ? procInfo.role : chaseProc ? (String(chaseProc.entry_order_id) === String(evt.orderId) ? 'E' : 'X') : null;
+
+              if (procId !== null && role !== null) {
+                const roleLbl = role === 'E' ? 'ENTRY [E]' : 'EXIT [X]';
+                const roleColor = role === 'E' ? '#06b6d4' : '#10b981';
+                chaseBadgeHtml = `<span style="background: ${roleColor}22; color: ${roleColor}; border: 1px solid ${roleColor}66; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: bold;">CHASE #${procId} (${roleLbl})</span>`;
               }
             }
 
