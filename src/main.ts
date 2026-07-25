@@ -1340,8 +1340,52 @@ window.addEventListener("DOMContentLoaded", async () => {
   logConsoleEl = document.getElementById("log-console");
   clearLogBtnEl = document.getElementById("clear-log-btn");
 
+  // ── BASE AMOUNT (USD) Config Handling ─────────────────────────────────────
+  const baseAmountInput = document.getElementById("base-amount-input") as HTMLInputElement;
+  const btnSaveBaseAmount = document.getElementById("btn-save-base-amount") as HTMLButtonElement;
+
+  if (baseAmountInput && btnSaveBaseAmount) {
+    // Initial fetch of trade_amount from PostgreSQL via API
+    fetch("http://127.0.0.1:8000/api/bot/config")
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.trade_amount) {
+          baseAmountInput.value = data.trade_amount.toString();
+        }
+      })
+      .catch(err => console.error("[BASE USD] Error fetching initial config:", err));
+
+    btnSaveBaseAmount.addEventListener("click", async () => {
+      const val = parseFloat(baseAmountInput.value);
+      if (isNaN(val) || val <= 0) {
+        addLog("[BASE USD ERROR] Ingrese un valor mayor a 0", "warn");
+        return;
+      }
+      try {
+        btnSaveBaseAmount.disabled = true;
+        btnSaveBaseAmount.textContent = "...";
+        const res = await fetch("http://127.0.0.1:8000/api/bot/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ trade_amount: val })
+        });
+        if (res.ok) {
+          addLog(`[BASE USD UPDATED] Nuevo valor base en PostgreSQL: $${val} USD`, "info");
+        } else {
+          addLog(`[BASE USD ERROR] Error en la API al guardar`, "err");
+        }
+      } catch (err) {
+        addLog(`[BASE USD ERROR] ${err}`, "err");
+      } finally {
+        btnSaveBaseAmount.disabled = false;
+        btnSaveBaseAmount.textContent = "SET";
+      }
+    });
+  }
+
   if (canvasEl) {
     // ── Mouse hover tracking for Tooltip ────────────────────────────────────
+
     canvasEl.addEventListener("mousemove", (e: MouseEvent) => {
       const rect = canvasEl!.getBoundingClientRect();
       mouseX = e.clientX - rect.left;
