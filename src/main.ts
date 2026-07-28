@@ -1920,3 +1920,213 @@ function updatePnLDisplay(currentBid: number, currentAsk: number) {
     unrealizedPnLValEl.className = 'card-price ' + (unrealizedPnL > 0 ? 'pnl-positive' : unrealizedPnL < 0 ? 'pnl-negative' : 'pnl-neutral');
   }
 }
+
+// ── BotInstance Configuration Manager Controller ────────────────────────────
+
+interface BotInstanceData {
+  id: number;
+  name: string;
+  symbol: string;
+  strategy_type: string;
+  allocated_capital: number;
+  used_capital?: number;
+  status: string;
+  params: Record<string, any>;
+}
+
+let loadedInstances: BotInstanceData[] = [];
+let selectedInstanceId: number | null = null;
+
+async function fetchBotInstancesList(): Promise<BotInstanceData[]> {
+  try {
+    const parentPort = config?.parent_api_port || "8000";
+    const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data as BotInstanceData[];
+  } catch (err: any) {
+    console.error("Failed to fetch bot instances:", err);
+    addLog(`[INSTANCES] Error cargando instancias: ${err.message}`, "err");
+    return [];
+  }
+}
+
+function renderInstanceForm(inst: BotInstanceData) {
+  const nameEl = document.getElementById("inst-edit-name") as HTMLInputElement;
+  const symbolEl = document.getElementById("inst-edit-symbol") as HTMLInputElement;
+  const stratEl = document.getElementById("inst-edit-strategy") as HTMLSelectElement;
+  const statusEl = document.getElementById("inst-edit-status") as HTMLSelectElement;
+  const capEl = document.getElementById("inst-edit-capital") as HTMLInputElement;
+
+  const profitEl = document.getElementById("inst-edit-profit-pc") as HTMLInputElement;
+  const threshEl = document.getElementById("inst-edit-threshold-pc") as HTMLInputElement;
+  const chaseEl = document.getElementById("inst-edit-chase") as HTMLSelectElement;
+  const bypassEl = document.getElementById("inst-edit-bypass-guards") as HTMLInputElement;
+  const disableScaleEl = document.getElementById("inst-edit-disable-scaling") as HTMLInputElement;
+
+  const rawJsonEl = document.getElementById("inst-edit-raw-json") as HTMLTextAreaElement;
+
+  if (nameEl) nameEl.value = inst.name || "";
+  if (symbolEl) symbolEl.value = inst.symbol || "";
+  if (stratEl) stratEl.value = inst.strategy_type || "GRID";
+  if (statusEl) statusEl.value = inst.status || "ACTIVE";
+  if (capEl) capEl.value = (inst.allocated_capital || 0).toString();
+
+  const params = inst.params || {};
+  if (profitEl) profitEl.value = ((params.profit_pc ?? 0.005) * 100).toFixed(3);
+  if (threshEl) threshEl.value = ((params.threshold_pc ?? 0.01) * 100).toFixed(3);
+  if (chaseEl) chaseEl.value = params.chase_behavior || "flat";
+  if (bypassEl) bypassEl.checked = !!params.bypass_global_guards;
+  if (disableScaleEl) disableScaleEl.checked = !!params.disable_balance_scaling;
+
+  if (rawJsonEl) rawJsonEl.value = JSON.stringify(params, null, 2);
+}
+
+async function refreshInstanceModalDropdown() {
+  const selectDropdown = document.getElementById("instance-select-dropdown") as HTMLSelectElement;
+  if (!selectDropdown) return;
+
+  selectDropdown.innerHTML = `<option value="">Cargando instancias...</option>`;
+  loadedInstances = await fetchBotInstancesList();
+
+  if (loadedInstances.length === 0) {
+    selectDropdown.innerHTML = `<option value="">No hay instancias registradas</option>`;
+    return;
+  }
+
+  selectDropdown.innerHTML = loadedInstances.map(inst => `
+    <option value="${inst.id}">[ID: ${inst.id}] ${inst.name} (${inst.symbol} - ${inst.strategy_type} - ${inst.status})</option>
+  `).join("");
+
+  // Select matching active instance or first
+  const currentInstanceIdNum = parseInt(config?.instance_id || "1", 10);
+  const match = loadedInstances.find(i => i.id === currentInstanceIdNum) || loadedInstances[0];
+
+  if (match) {
+    selectedInstanceId = match.id;
+    selectDropdown.value = match.id.toString();
+    renderInstanceForm(match);
+  }
+}
+
+async function saveInstanceConfigHot() {
+  if (!selectedInstanceId) return;
+
+  const feedbackEl = document.getElementById("instance-status-feedback");
+  if (feedbackEl) feedbackEl.innerText = "Guardando cambios en caliente...";
+
+  const nameEl = document.getElementById("inst-edit-name") as HTMLInputElement;
+  const symbolEl = document.getElementById("inst-edit-symbol") as HTMLInputElement;
+  const stratEl = document.getElementById("inst-edit-strategy") as HTMLSelectElement;
+  const statusEl = document.getElementById("inst-edit-status") as HTMLSelectElement;
+  const capEl = document.getElementById("inst-edit-capital") as HTMLInputElement;
+
+  const profitEl = document.getElementById("inst-edit-profit-pc") as HTMLInputElement;
+  const threshEl = document.getElementById("inst-edit-threshold-pc") as HTMLInputElement;
+  const chaseEl = document.getElementById("inst-edit-chase") as HTMLSelectElement;
+  const bypassEl = document.getElementById("inst-edit-bypass-guards") as HTMLInputElement;
+  const disableScaleEl = document.getElementById("inst-edit-disable-scaling") as HTMLInputElement;
+
+  const rawJsonEl = document.getElementById("inst-edit-raw-json") as HTMLTextAreaElement;
+
+  // Build params object
+  let updatedParams: Record<string, any> = {};
+  try {
+    if (rawJsonEl && rawJsonEl.value.trim()) {
+      updatedParams = JSON.parse(rawJsonEl.value);
+    }
+  } catch (e) {
+    if (feedbackEl) feedbackEl.innerText = "❌ Error sintáctico en JSON raw. Corrija la sintaxis.";
+    return;
+  }
+
+  if (profitEl) updatedParams["profit_pc"] = parseFloat(profitEl.value) / 100.0;
+  if (threshEl) updatedParams["threshold_pc"] = parseFloat(threshEl.value) / 100.0;
+  if (chaseEl) updatedParams["chase_behavior"] = chaseEl.value;
+  if (bypassEl) updatedParams["bypass_global_guards"] = bypassEl.checked;
+  if (disableScaleEl) updatedParams["disable_balance_scaling"] = disableScaleEl.checked;
+
+  const payload = {
+    name: nameEl?.value || "Instance",
+    symbol: symbolEl?.value || "1000PEPEUSDC",
+    strategy_type: stratEl?.value || "GRID",
+    status: statusEl?.value || "ACTIVE",
+    allocated_capital: parseFloat(capEl?.value || "50"),
+    params: updatedParams
+  };
+
+  try {
+    const parentPort = config?.parent_api_port || "8000";
+    const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${selectedInstanceId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(errData.detail || "Error actualizando instancia");
+    }
+
+    await res.json();
+    if (feedbackEl) feedbackEl.innerText = "✅ Configuración actualizada y sincronizada en caliente.";
+    addLog(`[INSTANCES] Instancia #${selectedInstanceId} guardada exitosamente. Status: ${payload.status}`, "success");
+
+    // Refresh list
+    setTimeout(() => {
+      refreshInstanceModalDropdown();
+    }, 1000);
+  } catch (err: any) {
+    console.error("Failed to save instance config:", err);
+    if (feedbackEl) feedbackEl.innerText = `❌ Error: ${err.message}`;
+    addLog(`[INSTANCES] Error guardando instancia: ${err.message}`, "err");
+  }
+}
+
+function initInstanceModalListeners() {
+  const modalEl = document.getElementById("instances-modal");
+  const openBtn = document.getElementById("btn-open-instance-config");
+  const closeBtn = document.getElementById("btn-close-instance-modal");
+  const cancelBtn = document.getElementById("btn-cancel-instance-modal");
+  const refreshBtn = document.getElementById("btn-refresh-instances");
+  const saveBtn = document.getElementById("btn-save-instance-modal");
+  const selectDropdown = document.getElementById("instance-select-dropdown") as HTMLSelectElement;
+
+  if (openBtn) {
+    openBtn.addEventListener("click", () => {
+      if (modalEl) modalEl.style.display = "flex";
+      refreshInstanceModalDropdown();
+    });
+  }
+
+  const closeModal = () => {
+    if (modalEl) modalEl.style.display = "none";
+  };
+
+  if (closeBtn) closeBtn.addEventListener("click", closeModal);
+  if (cancelBtn) cancelBtn.addEventListener("click", closeModal);
+  if (refreshBtn) refreshBtn.addEventListener("click", () => refreshInstanceModalDropdown());
+
+  if (selectDropdown) {
+    selectDropdown.addEventListener("change", () => {
+      const selectedIdNum = parseInt(selectDropdown.value, 10);
+      const match = loadedInstances.find(i => i.id === selectedIdNum);
+      if (match) {
+        selectedInstanceId = match.id;
+        renderInstanceForm(match);
+      }
+    });
+  }
+
+  if (saveBtn) {
+    saveBtn.addEventListener("click", () => saveInstanceConfigHot());
+  }
+}
+
+// Bind modal listeners on document load
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => initInstanceModalListeners());
+} else {
+  initInstanceModalListeners();
+}
+
