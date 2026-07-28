@@ -96,6 +96,7 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
 
         #[derive(serde::Deserialize)]
         struct ListenKeyResponse {
+            #[allow(dead_code)]
             #[serde(rename = "listenKey")]
             listen_key: String,
             ws_url: String,
