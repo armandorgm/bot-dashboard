@@ -1982,6 +1982,24 @@ function renderInstanceForm(inst: BotInstanceData) {
   if (rawJsonEl) rawJsonEl.value = JSON.stringify(params, null, 2);
 }
 
+function getInstanceStatusColor(status: string): string {
+  switch ((status || '').toUpperCase()) {
+    case 'ACTIVE':
+    case 'RUNNING':
+      return '#10b981'; // Verde
+    case 'PAUSED':
+    case 'IDLE':
+    case 'WAITING':
+      return '#f59e0b'; // Amarillo / Naranja
+    case 'STOPPED':
+    case 'ABORTED':
+    case 'ERROR':
+      return '#ef4444'; // Rojo
+    default:
+      return '#9ca3af'; // Gris
+  }
+}
+
 async function refreshInstanceModalDropdown() {
   const selectDropdown = document.getElementById("instance-select-dropdown") as HTMLSelectElement;
   const headerSelector = document.getElementById("header-instance-selector") as HTMLSelectElement;
@@ -1997,17 +2015,26 @@ async function refreshInstanceModalDropdown() {
     return;
   }
 
-  const modalOptions = loadedInstances.map(inst => `
-    <option value="${inst.id}">[ID: ${inst.id}] ${inst.name} (${inst.symbol} - ${inst.strategy_type} - ${inst.status})</option>
-  `).join("");
+  const modalOptions = loadedInstances.map(inst => {
+    const color = getInstanceStatusColor(inst.status);
+    return `<option value="${inst.id}" style="color: ${color}; background: #111827;">[ID: ${inst.id}] ${inst.name} (${inst.symbol} - ${inst.strategy_type} - ${inst.status})</option>`;
+  }).join("");
 
   const headerOptions = loadedInstances.map(inst => {
     const isSelected = String(inst.id) === String(config.instance_id) || inst.symbol === config.symbol;
-    return `<option value="${inst.id}" ${isSelected ? 'selected' : ''}>${inst.name} [${inst.symbol}]</option>`;
+    const color = getInstanceStatusColor(inst.status);
+    return `<option value="${inst.id}" ${isSelected ? 'selected' : ''} style="color: ${color}; background: #111827;">● ${inst.name} [${inst.symbol}] (${inst.status})</option>`;
   }).join("");
 
   if (selectDropdown) selectDropdown.innerHTML = modalOptions;
-  if (headerSelector) headerSelector.innerHTML = headerOptions;
+  if (headerSelector) {
+    headerSelector.innerHTML = headerOptions;
+    // Ajustar el color del texto del selector según el bot seleccionado
+    const selectedInst = loadedInstances.find(i => String(i.id) === String(config.instance_id)) || loadedInstances[0];
+    if (selectedInst) {
+      headerSelector.style.color = getInstanceStatusColor(selectedInst.status);
+    }
+  }
 
   // Select matching active instance or first
   const currentInstanceIdNum = parseInt(config?.instance_id || "1", 10);
@@ -2039,10 +2066,13 @@ function switchActiveInstance(instanceId: string | number) {
   if (instanceIdDisplayEl) instanceIdDisplayEl.innerText = String(target.id);
   if (portDisplayEl) portDisplayEl.innerText = config.port;
 
-  // Actualizar selector del header si existe
+  // Actualizar selector del header y su color si existe
   const headerSelector = document.getElementById("header-instance-selector") as HTMLSelectElement | null;
-  if (headerSelector && headerSelector.value !== String(target.id)) {
-    headerSelector.value = String(target.id);
+  if (headerSelector) {
+    if (headerSelector.value !== String(target.id)) {
+      headerSelector.value = String(target.id);
+    }
+    headerSelector.style.color = getInstanceStatusColor(target.status);
   }
 
   // Limpiar estado visual anterior
