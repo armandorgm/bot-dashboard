@@ -1624,44 +1624,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // Load initial chase behavior and set selector
-  const chaseSelectEl = document.getElementById("chase-behavior-select") as HTMLSelectElement | null;
-  if (chaseSelectEl) {
-    const parentPort = config.parent_api_port || "8000";
-    try {
-      const response = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${config.instance_id}/telemetry`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.chase_behavior) {
-          chaseSelectEl.value = data.chase_behavior;
-          addLog(`Initial chase behavior loaded: ${data.chase_behavior.toUpperCase()}`, 'info');
-        }
-      }
-    } catch (err) {
-      console.warn("Failed to load initial chase behavior via telemetry endpoint.", err);
-    }
 
-    chaseSelectEl.addEventListener("change", async (e) => {
-      const val = (e.target as HTMLSelectElement).value;
-      const parentPort = config.parent_api_port || "8000";
-      addLog(`Changing chase behavior to ${val.toUpperCase()} in hot...`, 'info');
-      try {
-        const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${config.instance_id}/chase-behavior`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ behavior: val })
-        });
-        if (res.ok) {
-          addLog(`Successfully changed chase behavior to ${val.toUpperCase()} in hot!`, 'success');
-        } else {
-          const errData = await res.json().catch(() => ({ detail: res.statusText }));
-          addLog(`Failed to change chase behavior: ${errData.detail}`, 'err');
-        }
-      } catch (err) {
-        addLog(`Error updating chase behavior: ${err}`, 'err');
-      }
-    });
-  }
 
   // Connect to public and local data sockets
   connectBinancePublicWs(config.symbol);
