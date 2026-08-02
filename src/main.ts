@@ -1984,19 +1984,30 @@ function renderInstanceForm(inst: BotInstanceData) {
 
 async function refreshInstanceModalDropdown() {
   const selectDropdown = document.getElementById("instance-select-dropdown") as HTMLSelectElement;
-  if (!selectDropdown) return;
+  const headerSelector = document.getElementById("header-instance-selector") as HTMLSelectElement;
+  
+  if (selectDropdown) selectDropdown.innerHTML = `<option value="">Cargando instancias...</option>`;
+  if (headerSelector) headerSelector.innerHTML = `<option value="">Cargando bots...</option>`;
 
-  selectDropdown.innerHTML = `<option value="">Cargando instancias...</option>`;
   loadedInstances = await fetchBotInstancesList();
 
   if (loadedInstances.length === 0) {
-    selectDropdown.innerHTML = `<option value="">No hay instancias registradas</option>`;
+    if (selectDropdown) selectDropdown.innerHTML = `<option value="">No hay instancias registradas</option>`;
+    if (headerSelector) headerSelector.innerHTML = `<option value="">No hay bots</option>`;
     return;
   }
 
-  selectDropdown.innerHTML = loadedInstances.map(inst => `
+  const modalOptions = loadedInstances.map(inst => `
     <option value="${inst.id}">[ID: ${inst.id}] ${inst.name} (${inst.symbol} - ${inst.strategy_type} - ${inst.status})</option>
   `).join("");
+
+  const headerOptions = loadedInstances.map(inst => {
+    const isSelected = String(inst.id) === String(config.instance_id) || inst.symbol === config.symbol;
+    return `<option value="${inst.id}" ${isSelected ? 'selected' : ''}>${inst.name} [${inst.symbol}]</option>`;
+  }).join("");
+
+  if (selectDropdown) selectDropdown.innerHTML = modalOptions;
+  if (headerSelector) headerSelector.innerHTML = headerOptions;
 
   // Select matching active instance or first
   const currentInstanceIdNum = parseInt(config?.instance_id || "1", 10);
@@ -2004,9 +2015,49 @@ async function refreshInstanceModalDropdown() {
 
   if (match) {
     selectedInstanceId = match.id;
-    selectDropdown.value = match.id.toString();
+    if (selectDropdown) selectDropdown.value = match.id.toString();
     renderInstanceForm(match);
   }
+}
+
+function switchActiveInstance(instanceId: string | number) {
+  const target = loadedInstances.find(inst => String(inst.id) === String(instanceId));
+  if (!target) return;
+
+  addLog(`[HOT-SWAP] Conmutando vista activa a la instancia: ${target.name} (${target.symbol})`, 'info');
+
+  // Actualizar config global de la instancia
+  config.instance_id = String(target.id);
+  config.symbol = target.symbol;
+  if (target.params && target.params.port) {
+    config.port = String(target.params.port);
+  }
+
+  // Actualizar elementos DOM del Header
+  if (botTitleEl) botTitleEl.innerText = `BOT INSTANCE ${target.name.toUpperCase()}`;
+  if (symbolDisplayEl) symbolDisplayEl.innerText = target.symbol;
+  if (instanceIdDisplayEl) instanceIdDisplayEl.innerText = String(target.id);
+  if (portDisplayEl) portDisplayEl.innerText = config.port;
+
+  // Actualizar selector del header si existe
+  const headerSelector = document.getElementById("header-instance-selector") as HTMLSelectElement | null;
+  if (headerSelector && headerSelector.value !== String(target.id)) {
+    headerSelector.value = String(target.id);
+  }
+
+  // Limpiar estado visual anterior
+  history = [];
+  hftEvents = [];
+  openOrders = [];
+  activeChaseProcesses = [];
+  drawChart();
+
+  // Reconectar WebSocket público directo de Binance para los ticks del gráfico del nuevo símbolo
+  connectBinancePublicWs(target.symbol);
+
+  // Volver a consultar APIs REST para la nueva instancia seleccionada
+  fetchOpenOrders();
+  fetchActivePipelines();
 }
 
 async function saveInstanceConfigHot() {
@@ -2091,6 +2142,15 @@ function initInstanceModalListeners() {
   const refreshBtn = document.getElementById("btn-refresh-instances");
   const saveBtn = document.getElementById("btn-save-instance-modal");
   const selectDropdown = document.getElementById("instance-select-dropdown") as HTMLSelectElement;
+  const headerSelector = document.getElementById("header-instance-selector") as HTMLSelectElement;
+
+  if (headerSelector) {
+    headerSelector.addEventListener("change", () => {
+      if (headerSelector.value) {
+        switchActiveInstance(headerSelector.value);
+      }
+    });
+  }
 
   if (openBtn) {
     openBtn.addEventListener("click", () => {
@@ -2121,6 +2181,9 @@ function initInstanceModalListeners() {
   if (saveBtn) {
     saveBtn.addEventListener("click", () => saveInstanceConfigHot());
   }
+
+  // Cargar lista de instancias al iniciar la aplicación para poblar el header selector
+  refreshInstanceModalDropdown();
 }
 
 // Bind modal listeners on document load
