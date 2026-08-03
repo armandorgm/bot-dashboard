@@ -2213,7 +2213,9 @@ interface GlobalOverviewResponse {
     allocated_capital: number;
     used_capital: number;
     lifetime_pnl: number;
+    session_pnl?: number | null;
     unrealized_pnl?: number;
+    session_unrealized_pnl?: number | null;
     total_trades: number;
     winning_trades: number;
     win_rate_pc: number;
@@ -2320,11 +2322,27 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
             ${inst.status}
           </span>
         </td>
-        <td style="padding: 14px 16px; text-align: right; font-weight: bold; color: ${pnlColor};">
-          $${pnlSign}${inst.lifetime_pnl.toFixed(4)}
+        <td style="padding: 14px 16px; text-align: right;">
+          <div style="font-weight: bold; color: ${pnlColor};">$${pnlSign}${inst.lifetime_pnl.toFixed(4)}</div>
+          ${inst.session_pnl !== undefined && inst.session_pnl !== null ? `
+            <div style="font-size: 11px; color: ${inst.session_pnl > 0 ? '#10b981' : inst.session_pnl < 0 ? '#ef4444' : '#94a3b8'};">
+              Sess: $${inst.session_pnl > 0 ? '+' : ''}${inst.session_pnl.toFixed(4)}
+            </div>
+          ` : `
+            <div style="font-size: 10px; color: #475569; font-style: italic;">Sess: N/A</div>
+          `}
         </td>
-        <td style="padding: 14px 16px; text-align: right; font-weight: bold; color: ${(inst.unrealized_pnl || 0) > 0 ? '#10b981' : (inst.unrealized_pnl || 0) < 0 ? '#ef4444' : '#64748b'};">
-          $${(inst.unrealized_pnl || 0) > 0 ? '+' : ''}${(inst.unrealized_pnl || 0).toFixed(4)}
+        <td style="padding: 14px 16px; text-align: right;">
+          <div style="font-weight: bold; color: ${(inst.unrealized_pnl || 0) > 0 ? '#10b981' : (inst.unrealized_pnl || 0) < 0 ? '#ef4444' : '#64748b'};">
+            $${(inst.unrealized_pnl || 0) > 0 ? '+' : ''}${(inst.unrealized_pnl || 0).toFixed(4)}
+          </div>
+          ${inst.session_unrealized_pnl !== undefined && inst.session_unrealized_pnl !== null ? `
+            <div style="font-size: 11px; color: ${inst.session_unrealized_pnl > 0 ? '#10b981' : inst.session_unrealized_pnl < 0 ? '#ef4444' : '#06b6d4'};">
+              Sess: $${inst.session_unrealized_pnl > 0 ? '+' : ''}${inst.session_unrealized_pnl.toFixed(4)}
+            </div>
+          ` : `
+            <div style="font-size: 10px; color: #475569; font-style: italic;">Sess: N/A</div>
+          `}
         </td>
         <td style="padding: 14px 16px; text-align: right; font-weight: bold; color: #3b82f6;">
           ${inst.total_trades}
