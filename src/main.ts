@@ -1213,12 +1213,14 @@ async function fetchActivePipelines() {
       const rawText = await response.clone().text();
       const data: ChasePipelineProcess[] = await response.json();
 
-      // Register new active processes in the SessionMetricsTracker
+      // Register active positions in SessionMetricsTracker ONLY when entry is filled (WAITING_TP_FILL)
       data.forEach((proc) => {
         if (proc.status !== 'COMPLETED' && proc.status !== 'ABORTED') {
           trackedSessionProcessIds.add(proc.id);
+          // Position is only active in exchange if status is WAITING_TP_FILL or has exit_order_id
+          const isPositionOpen = proc.status === 'WAITING_TP_FILL' || Boolean(proc.exit_order_id);
           const entryPrice = proc.last_order_price || proc.initial_price || 0;
-          if (entryPrice > 0) {
+          if (isPositionOpen && entryPrice > 0) {
             sessionMetrics.registerPosition({
               processId: proc.id,
               instanceId: proc.instance_id,
