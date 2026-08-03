@@ -2131,6 +2131,7 @@ interface GlobalOverviewResponse {
   status: string;
   portfolio_summary: {
     total_lifetime_pnl: number;
+    total_unrealized_pnl?: number;
     total_trades: number;
     total_instances: number;
     active_instances: number;
@@ -2144,6 +2145,7 @@ interface GlobalOverviewResponse {
     allocated_capital: number;
     used_capital: number;
     lifetime_pnl: number;
+    unrealized_pnl?: number;
     total_trades: number;
     winning_trades: number;
     win_rate_pc: number;
@@ -2197,6 +2199,7 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
 
   // Header Cards
   const pnlEl = document.getElementById("ov-lifetime-pnl-val");
+  const unrealizedEl = document.getElementById("ov-unrealized-pnl-val");
   const tradesEl = document.getElementById("ov-total-trades-val");
   const activeEl = document.getElementById("ov-active-bots-val");
   const winrateEl = document.getElementById("ov-winrate-val");
@@ -2205,6 +2208,13 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
     const sign = summary.total_lifetime_pnl > 0 ? '+' : '';
     pnlEl.innerText = `$${sign}${summary.total_lifetime_pnl.toFixed(4)}`;
     pnlEl.style.color = summary.total_lifetime_pnl > 0 ? '#10b981' : summary.total_lifetime_pnl < 0 ? '#ef4444' : '#9ca3af';
+  }
+
+  if (unrealizedEl) {
+    const globalUnrealized = summary.total_unrealized_pnl ?? 0;
+    const uSign = globalUnrealized > 0 ? '+' : '';
+    unrealizedEl.innerText = `$${uSign}${globalUnrealized.toFixed(4)}`;
+    unrealizedEl.style.color = globalUnrealized > 0 ? '#10b981' : globalUnrealized < 0 ? '#ef4444' : '#06b6d4';
   }
   if (tradesEl) tradesEl.innerText = summary.total_trades.toString();
   if (activeEl) activeEl.innerText = `${summary.active_instances} / ${summary.total_instances}`;
@@ -2244,6 +2254,9 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
         </td>
         <td style="padding: 14px 16px; text-align: right; font-weight: bold; color: ${pnlColor};">
           $${pnlSign}${inst.lifetime_pnl.toFixed(4)}
+        </td>
+        <td style="padding: 14px 16px; text-align: right; font-weight: bold; color: ${(inst.unrealized_pnl || 0) > 0 ? '#10b981' : (inst.unrealized_pnl || 0) < 0 ? '#ef4444' : '#64748b'};">
+          $${(inst.unrealized_pnl || 0) > 0 ? '+' : ''}${(inst.unrealized_pnl || 0).toFixed(4)}
         </td>
         <td style="padding: 14px 16px; text-align: right; font-weight: bold; color: #3b82f6;">
           ${inst.total_trades}
