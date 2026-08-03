@@ -1197,6 +1197,17 @@ const completedSessionProcessIds = new Set<number>();
 async function fetchActivePipelines() {
   const parentPort = config.parent_api_port || "8000";
   try {
+    // Sync current session metrics from backend per active instance
+    const targetInstId = selectedInstanceId !== null ? selectedInstanceId : parseInt(config.instance_id || "1", 10);
+    fetch(`http://127.0.0.1:${parentPort}/api/sessions/current?instance_id=${targetInstId}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(resData => {
+        if (resData && resData.data && typeof resData.data.net_pnl === 'number') {
+          sessionMetrics.setRealizedPnL(resData.data.net_pnl, targetInstId);
+        }
+      })
+      .catch(() => {});
+
     const response = await fetch(`http://127.0.0.1:${parentPort}/api/pipelines/active`);
     if (response.ok) {
       const rawText = await response.clone().text();
@@ -1239,9 +1250,10 @@ async function fetchActivePipelines() {
           const priceDiff = isLong ? (exitPrice - entryPrice) : (entryPrice - exitPrice);
           const tradePnL = priceDiff * amount;
 
-          // Add to Session Realized PnL
-          sessionMetrics.addRealizedPnL(tradePnL);
-          addLog(`[SESSION PnL] Process #${procId} COMPLETED. Trade PnL: $${tradePnL.toFixed(4)}`, tradePnL >= 0 ? 'success' : 'warn');
+          // Add to Session Realized PnL for target instance
+          const procInstId = proc.instance_id || (selectedInstanceId !== null ? selectedInstanceId : parseInt(config.instance_id || "1", 10));
+          sessionMetrics.addRealizedPnL(tradePnL, procInstId);
+          addLog(`[SESSION PnL] Process #${procId} (Inst #${procInstId}) COMPLETED. Trade PnL: $${tradePnL.toFixed(4)}`, tradePnL >= 0 ? 'success' : 'warn');
 
           // Find anchor canvas coordinates for exit or entry marker
           let anchorX = canvasEl ? canvasEl.width * 0.5 : 200;
@@ -1874,8 +1886,8 @@ function initDataSourceControls() {
  * with formatted currency and status neon colors.
  */
 function updatePnLDisplay(currentBid: number, currentAsk: number) {
-  const realizedPnL = sessionMetrics.getRealizedPnL();
   const targetInstId = selectedInstanceId !== null ? selectedInstanceId : parseInt(config.instance_id || "1", 10);
+  const realizedPnL = sessionMetrics.getRealizedPnL(targetInstId);
   const unrealizedPnL = sessionMetrics.calculateUnrealizedPnL(currentBid, currentAsk, config.symbol, targetInstId);
 
   if (sessionPnLValEl) {

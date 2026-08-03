@@ -14,7 +14,7 @@ export interface ActiveSessionPosition {
 }
 
 export class SessionMetricsTracker {
-  private sessionRealizedPnL: number = 0;
+  private sessionRealizedPnLMap: Map<number, number> = new Map();
   private activePositions: Map<number, ActiveSessionPosition> = new Map();
 
   /**
@@ -43,17 +43,25 @@ export class SessionMetricsTracker {
   }
 
   /**
-   * Adds realized profit/loss from a closed trade to the session accumulator.
+   * Adds realized profit/loss from a closed trade to the session accumulator for a specific instance.
    */
-  public addRealizedPnL(amount: number): void {
-    this.sessionRealizedPnL += amount;
+  public addRealizedPnL(amount: number, instanceId: number = 1): void {
+    const current = this.sessionRealizedPnLMap.get(instanceId) || 0;
+    this.sessionRealizedPnLMap.set(instanceId, current + amount);
   }
 
   /**
-   * Gets the total realized PnL accumulated in memory for this session.
+   * Explicitly sets the session realized PnL for a specific instance (e.g. synced from DB backend).
    */
-  public getRealizedPnL(): number {
-    return this.sessionRealizedPnL;
+  public setRealizedPnL(amount: number, instanceId: number = 1): void {
+    this.sessionRealizedPnLMap.set(instanceId, amount);
+  }
+
+  /**
+   * Gets the total realized PnL accumulated in memory for a specific instance session.
+   */
+  public getRealizedPnL(instanceId: number = 1): number {
+    return this.sessionRealizedPnLMap.get(instanceId) || 0;
   }
 
   /**
