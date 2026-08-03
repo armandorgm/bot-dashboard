@@ -856,6 +856,16 @@ function updateXAdvanceMode(mode: 'tick' | 'second') {
 
 // Direct connection to Binance public WebSocket stream for ticks (market feed)
 function connectBinancePublicWs(symbol: string) {
+  // 1. Desconectar y limpiar cualquier WebSocket público anterior para no mezclar símbolos
+  if (binancePublicWs) {
+    addLog(`[BINANCE-PUBLIC-WS] Cerrando conexión previa antes de conectar a ${symbol}...`, 'warn');
+    binancePublicWs.onclose = null; // desarmar reconexión automática del socket viejo
+    binancePublicWs.onmessage = null;
+    binancePublicWs.onerror = null;
+    binancePublicWs.close();
+    binancePublicWs = null;
+  }
+
   // Extract clean symbol (e.g. SOL/USDT:USDT -> SOL/USDT -> solusdt)
   const baseSymbol = symbol.split(":")[0];
   const normalizedSymbol = baseSymbol.replace("/", "").toLowerCase();
@@ -863,6 +873,7 @@ function connectBinancePublicWs(symbol: string) {
 
   addLog(`[BINANCE-PUBLIC-WS] Connecting to public ticker feed at ${wsUrl}...`, 'info');
   
+  const currentSocketSymbol = symbol;
   binancePublicWs = new WebSocket(wsUrl);
 
   binancePublicWs.onopen = () => {
@@ -870,10 +881,13 @@ function connectBinancePublicWs(symbol: string) {
   };
 
   binancePublicWs.onmessage = (event) => {
+    // Si la instancia cambió mientras este evento se procesaba, descartar
+    const activeCleanSymbol = config.symbol.split(":")[0].replace("/", "").toLowerCase();
+    if (normalizedSymbol !== activeCleanSymbol) return;
+
     try {
       const data = JSON.parse(event.data);
       if (!data) return;
-      // Diagnostic Log: prints tick count or contents
 
       const bidVal = Number(data.b);
       const askVal = Number(data.a);
@@ -905,8 +919,12 @@ function connectBinancePublicWs(symbol: string) {
   };
 
   binancePublicWs.onclose = () => {
-    addLog(`[BINANCE-PUBLIC-WS] Connection closed. Reconnecting in 3s...`, 'warn');
-    setTimeout(() => connectBinancePublicWs(symbol), 3000);
+    // Solo reconectar si este sigue siendo el símbolo activo
+    const activeCleanSymbol = config.symbol.split(":")[0].replace("/", "").toLowerCase();
+    if (normalizedSymbol === activeCleanSymbol) {
+      addLog(`[BINANCE-PUBLIC-WS] Connection closed. Reconnecting in 3s...`, 'warn');
+      setTimeout(() => connectBinancePublicWs(currentSocketSymbol), 3000);
+    }
   };
 }
 
