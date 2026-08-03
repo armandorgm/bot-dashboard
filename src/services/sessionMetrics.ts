@@ -5,6 +5,8 @@
 
 export interface ActiveSessionPosition {
   processId: number;
+  instanceId?: number;
+  symbol?: string;
   entryPrice: number;
   amount: number;
   side: string; // 'BUY' or 'SELL' (or 'LONG' / 'SHORT')
@@ -20,6 +22,13 @@ export class SessionMetricsTracker {
    */
   public registerPosition(position: ActiveSessionPosition): void {
     this.activePositions.set(position.processId, position);
+  }
+
+  /**
+   * Clears active positions stored in memory (useful during hot-swaps).
+   */
+  public resetPositions(): void {
+    this.activePositions.clear();
   }
 
   /**
@@ -48,13 +57,49 @@ export class SessionMetricsTracker {
   }
 
   /**
-   * Calculates the floating (unrealized) PnL for all active positions of the current session
-   * based on the latest bid/ask prices.
+   * Helper to normalize symbol strings for robust comparison.
+   * Converts CCXT '1000PEPE/USDC:USDC' and Binance '1000PEPEUSDC' both to '1000PEPEUSDC'.
    */
-  public calculateUnrealizedPnL(currentBid: number, currentAsk: number): number {
+  private normalizeSymbol(sym?: string): string {
+    if (!sym) return "";
+    const base = sym.split(":")[0];
+    return base.replace(/\//g, "").toUpperCase();
+  }
+
+  /**
+   * Calculates the floating (unrealized) PnL for active positions of the current session
+   * matching the specified target symbol and/or instance ID.
+   */
+  public calculateUnrealizedPnL(
+    currentBid: number,
+    currentAsk: number,
+    targetSymbol?: string,
+    targetInstanceId?: number
+  ): number {
     let totalUnrealized = 0;
+    const normTargetSymbol = this.normalizeSymbol(targetSymbol);
 
     this.activePositions.forEach((pos) => {
+      // Filter by instance ID if both are present
+      if (
+        targetInstanceId !== undefined &&
+        targetInstanceId !== null &&
+        pos.instanceId !== undefined &&
+        pos.instanceId !== null
+      ) {
+        if (String(pos.instanceId) !== String(targetInstanceId)) {
+          return;
+        }
+      }
+
+      // Filter by normalized symbol if targetSymbol is provided
+      if (normTargetSymbol && pos.symbol) {
+        const normPosSymbol = this.normalizeSymbol(pos.symbol);
+        if (normPosSymbol !== normTargetSymbol) {
+          return;
+        }
+      }
+
       const isLong = pos.side.toUpperCase() === 'BUY' || pos.side.toUpperCase() === 'LONG';
       // For a LONG position, liquidating price is current BID.
       // For a SHORT position, liquidating price is current ASK.

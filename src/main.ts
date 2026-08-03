@@ -49,6 +49,7 @@ interface VisualMarker {
 export interface ChasePipelineProcess {
   id: number;
   pipeline_id: number;
+  instance_id?: number;
   symbol: string;
   entry_order_id?: string;
   exit_order_id?: string;
@@ -1209,6 +1210,8 @@ async function fetchActivePipelines() {
           if (entryPrice > 0) {
             sessionMetrics.registerPosition({
               processId: proc.id,
+              instanceId: proc.instance_id,
+              symbol: proc.symbol,
               entryPrice: entryPrice,
               amount: proc.amount || 0,
               side: proc.side || 'BUY',
@@ -1872,7 +1875,8 @@ function initDataSourceControls() {
  */
 function updatePnLDisplay(currentBid: number, currentAsk: number) {
   const realizedPnL = sessionMetrics.getRealizedPnL();
-  const unrealizedPnL = sessionMetrics.calculateUnrealizedPnL(currentBid, currentAsk);
+  const targetInstId = selectedInstanceId !== null ? selectedInstanceId : parseInt(config.instance_id || "1", 10);
+  const unrealizedPnL = sessionMetrics.calculateUnrealizedPnL(currentBid, currentAsk, config.symbol, targetInstId);
 
   if (sessionPnLValEl) {
     const sign = realizedPnL > 0 ? '+' : '';
@@ -2021,6 +2025,7 @@ function switchActiveInstance(instanceId: string | number) {
   addLog(`[HOT-SWAP] Conmutando vista activa a la instancia: ${target.name} (${target.symbol})`, 'info');
 
   // Actualizar config global de la instancia
+  selectedInstanceId = target.id;
   config.instance_id = String(target.id);
   config.symbol = target.symbol;
   if (target.params && target.params.port) {
@@ -2044,6 +2049,7 @@ function switchActiveInstance(instanceId: string | number) {
   hftEvents = [];
   openOrders = [];
   activeChaseProcesses = [];
+  sessionMetrics.resetPositions();
   drawChart();
 
   // Reconectar WebSocket público directo de Binance para los ticks del gráfico del nuevo símbolo
