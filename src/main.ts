@@ -141,6 +141,7 @@ let modifiedValEl: HTMLElement | null = null;
 let buySellValEl: HTMLElement | null = null;
 let sessionPnLValEl: HTMLElement | null = null;
 let unrealizedPnLValEl: HTMLElement | null = null;
+let instanceTotalUnrealizedValEl: HTMLElement | null = null;
 let pnlRateValEl: HTMLElement | null = null;
 let sessionTimeValEl: HTMLElement | null = null;
 const sessionStartTimeMap = new Map<number, number>();
@@ -1234,6 +1235,13 @@ async function fetchActivePipelines() {
           const isPositionOpen = proc.status === 'WAITING_TP_FILL' || Boolean(proc.exit_order_id);
           const entryPrice = proc.last_order_price || proc.initial_price || 0;
           if (isPositionOpen && entryPrice > 0) {
+            let procCreatedAt = Date.now();
+            if (proc.created_at) {
+              const rawStr = String(proc.created_at);
+              const isoStr = rawStr.endsWith('Z') ? rawStr : rawStr + 'Z';
+              const parsed = new Date(isoStr).getTime();
+              if (!isNaN(parsed)) procCreatedAt = parsed;
+            }
             sessionMetrics.registerPosition({
               processId: proc.id,
               instanceId: proc.instance_id,
@@ -1241,7 +1249,7 @@ async function fetchActivePipelines() {
               entryPrice: entryPrice,
               amount: proc.amount || 0,
               side: proc.side || 'BUY',
-              createdAt: Date.now()
+              createdAt: procCreatedAt
             });
           }
         }
@@ -1379,6 +1387,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   buySellValEl = document.getElementById("buy-sell-val");
   sessionPnLValEl = document.getElementById("session-pnl-val");
   unrealizedPnLValEl = document.getElementById("unrealized-pnl-val");
+  instanceTotalUnrealizedValEl = document.getElementById("instance-total-unrealized-val");
   pnlRateValEl = document.getElementById("pnl-rate-val");
   sessionTimeValEl = document.getElementById("session-time-val");
 
@@ -1924,7 +1933,8 @@ function initDataSourceControls() {
 function updatePnLDisplay(currentBid: number, currentAsk: number) {
   const targetInstId = selectedInstanceId !== null ? selectedInstanceId : parseInt(config.instance_id || "1", 10);
   const realizedPnL = sessionMetrics.getRealizedPnL(targetInstId);
-  const unrealizedPnL = sessionMetrics.calculateUnrealizedPnL(currentBid, currentAsk, config.symbol, targetInstId);
+  const startTimeMs = sessionStartTimeMap.get(targetInstId);
+  const unrealizedPnL = sessionMetrics.calculateUnrealizedPnL(currentBid, currentAsk, config.symbol, targetInstId, startTimeMs);
 
   if (sessionPnLValEl) {
     const sign = realizedPnL > 0 ? '+' : '';
@@ -1936,6 +1946,13 @@ function updatePnLDisplay(currentBid: number, currentAsk: number) {
     const sign = unrealizedPnL > 0 ? '+' : '';
     unrealizedPnLValEl.innerText = `$${sign}${unrealizedPnL.toFixed(4)}`;
     unrealizedPnLValEl.className = 'card-price ' + (unrealizedPnL > 0 ? 'pnl-positive' : unrealizedPnL < 0 ? 'pnl-negative' : 'pnl-neutral');
+  }
+
+  if (instanceTotalUnrealizedValEl) {
+    // Total Instance Unrealized PnL (all open positions of this instance regardless of session start time)
+    const totalInstanceUnrealized = sessionMetrics.calculateUnrealizedPnL(currentBid, currentAsk, config.symbol, targetInstId);
+    const totSign = totalInstanceUnrealized > 0 ? '+' : '';
+    instanceTotalUnrealizedValEl.innerText = `Tot: $${totSign}${totalInstanceUnrealized.toFixed(4)}`;
   }
 
   if (pnlRateValEl) {

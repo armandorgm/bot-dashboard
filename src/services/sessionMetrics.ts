@@ -82,12 +82,20 @@ export class SessionMetricsTracker {
     currentBid: number,
     currentAsk: number,
     targetSymbol?: string,
-    targetInstanceId?: number
+    targetInstanceId?: number,
+    sessionStartTimeMs?: number
   ): number {
     let totalUnrealized = 0;
     const normTargetSymbol = this.normalizeSymbol(targetSymbol);
 
     this.activePositions.forEach((pos) => {
+      // Filter by session start time if provided (only positions created during session)
+      if (sessionStartTimeMs !== undefined && sessionStartTimeMs !== null && sessionStartTimeMs > 0) {
+        if (pos.createdAt && pos.createdAt < sessionStartTimeMs) {
+          return;
+        }
+      }
+
       // Filter by instance ID if both are present
       if (
         targetInstanceId !== undefined &&
