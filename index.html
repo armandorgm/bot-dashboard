@@ -18,6 +18,10 @@
             <span class="led led-red" id="conn-led"></span>
             <span id="conn-text">DISCONNECTED</span>
           </div>
+          <div class="badge status-badge" id="instance-status-toggle" style="cursor: pointer; user-select: none; transition: all 0.2s ease;" title="Haga clic para alternar el estado entre ACTIVE y PAUSED">
+            <span class="led led-red" id="instance-status-led"></span>
+            <span id="instance-status-text" style="font-weight: bold;">STOPPED</span>
+          </div>
           <div style="display: flex; align-items: center; gap: 6px; margin-left: 12px; background: #111827; padding: 2px 8px; border-radius: 6px; border: 1px solid #374151;">
             <span style="font-size: 11px; color: #9ca3af; font-family: 'JetBrains Mono', monospace; font-weight: bold;">BOT:</span>
             <select id="header-instance-selector" style="background: transparent; color: #10b981; border: none; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: bold; outline: none; cursor: pointer;">

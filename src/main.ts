@@ -1401,6 +1401,11 @@ window.addEventListener("DOMContentLoaded", async () => {
     btnRefreshOverview.addEventListener("click", () => fetchGlobalOverview());
   }
 
+  const instanceStatusToggle = document.getElementById("instance-status-toggle");
+  if (instanceStatusToggle) {
+    instanceStatusToggle.addEventListener("click", () => toggleInstanceStatus());
+  }
+
   // Set default active view mode to HOME Global Overview Command Center
   setViewMode('home');
 
@@ -2109,6 +2114,9 @@ function switchActiveInstance(instanceId: string | number) {
     headerSelector.style.color = getInstanceStatusColor(target.status);
   }
 
+  // Actualizar la luz LED y texto del switch de estado de la instancia activa
+  updateInstanceStatusToggleUI(target.status);
+
   // Limpiar estado visual anterior
   history = [];
   hftEvents = [];
@@ -2123,6 +2131,66 @@ function switchActiveInstance(instanceId: string | number) {
   // Volver a consultar APIs REST para la nueva instancia seleccionada
   fetchOpenOrders();
   fetchActivePipelines();
+}
+
+function updateInstanceStatusToggleUI(status: string) {
+  const statusLed = document.getElementById("instance-status-led");
+  const statusText = document.getElementById("instance-status-text");
+  const toggleBadge = document.getElementById("instance-status-toggle");
+
+  if (!statusText || !statusLed || !toggleBadge) return;
+
+  const upperStatus = (status || "STOPPED").toUpperCase();
+  statusText.innerText = upperStatus;
+
+  if (upperStatus === "ACTIVE") {
+    statusLed.className = "led led-green";
+    toggleBadge.style.border = "1px solid #10b981";
+    toggleBadge.style.background = "rgba(16, 185, 129, 0.15)";
+    statusText.style.color = "#10b981";
+  } else if (upperStatus === "PAUSED") {
+    statusLed.className = "led led-yellow";
+    toggleBadge.style.border = "1px solid #f59e0b";
+    toggleBadge.style.background = "rgba(245, 158, 11, 0.15)";
+    statusText.style.color = "#f59e0b";
+  } else {
+    // STOPPED / INACTIVE
+    statusLed.className = "led led-red";
+    toggleBadge.style.border = "1px solid #ef4444";
+    toggleBadge.style.background = "rgba(239, 68, 68, 0.15)";
+    statusText.style.color = "#ef4444";
+  }
+}
+
+async function toggleInstanceStatus() {
+  const currentInstId = selectedInstanceId || parseInt(config.instance_id || "1", 10);
+  const currentInst = loadedInstances.find(i => i.id === currentInstId);
+  const currentStatus = currentInst ? currentInst.status.toUpperCase() : "ACTIVE";
+
+  // Toggle exclusively between ACTIVE and PAUSED
+  const newStatus = currentStatus === "ACTIVE" ? "PAUSED" : "ACTIVE";
+  const parentPort = config.parent_api_port || "8000";
+
+  try {
+    addLog(`[INSTANCE STATUS] Solicitando cambio de estado para Instancia #${currentInstId}: ${currentStatus} -> ${newStatus}...`, "info");
+    const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${currentInstId}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus })
+    });
+
+    if (res.ok) {
+      addLog(`[INSTANCE STATUS] Estado cambiado exitosamente a: ${newStatus}`, "info");
+      if (currentInst) currentInst.status = newStatus;
+      updateInstanceStatusToggleUI(newStatus);
+      const headerSelector = document.getElementById("header-instance-selector") as HTMLSelectElement | null;
+      if (headerSelector) headerSelector.style.color = getInstanceStatusColor(newStatus);
+    } else {
+      addLog(`[INSTANCE STATUS ERROR] Error en API al cambiar estado (HTTP ${res.status})`, "err");
+    }
+  } catch (err: any) {
+    addLog(`[INSTANCE STATUS ERROR] Fallo de red: ${err.message}`, "err");
+  }
 }
 
 // ── Global Overview Page Controller ──────────────────────────────────────────
