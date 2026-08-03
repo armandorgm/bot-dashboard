@@ -1986,7 +1986,8 @@ async function refreshInstanceModalDropdown() {
   const headerOptions = loadedInstances.map(inst => {
     const isSelected = String(inst.id) === String(config.instance_id) || inst.symbol === config.symbol;
     const color = getInstanceStatusColor(inst.status);
-    return `<option value="${inst.id}" ${isSelected ? 'selected' : ''} style="color: ${color}; background: #111827;">● ${inst.name} [${inst.symbol}] (${inst.status})</option>`;
+    const portStr = inst.params?.port ? `:${inst.params.port}` : '';
+    return `<option value="${inst.id}" ${isSelected ? 'selected' : ''} style="color: ${color}; background: #111827;">● #${inst.id} | ${inst.name} [${inst.symbol}${portStr}] (${inst.status})</option>`;
   }).join("");
 
   if (selectDropdown) selectDropdown.innerHTML = modalOptions;
@@ -2025,9 +2026,6 @@ function switchActiveInstance(instanceId: string | number) {
 
   // Actualizar elementos DOM del Header
   if (botTitleEl) botTitleEl.innerText = `BOT INSTANCE ${target.name.toUpperCase()}`;
-  if (symbolDisplayEl) symbolDisplayEl.innerText = target.symbol;
-  if (instanceIdDisplayEl) instanceIdDisplayEl.innerText = String(target.id);
-  if (portDisplayEl) portDisplayEl.innerText = config.port;
 
   // Actualizar selector del header y su color si existe
   const headerSelector = document.getElementById("header-instance-selector") as HTMLSelectElement | null;
