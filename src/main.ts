@@ -1390,6 +1390,20 @@ window.addEventListener("DOMContentLoaded", async () => {
   logConsoleEl = document.getElementById("log-console");
   clearLogBtnEl = document.getElementById("clear-log-btn");
 
+  // ── SPA NAV CONTROLLER: HOME & OVERVIEW MATRIX LISTENERS ────────────────
+  const btnNavHome = document.getElementById("btn-nav-home");
+  if (btnNavHome) {
+    btnNavHome.addEventListener("click", () => setViewMode('home'));
+  }
+
+  const btnRefreshOverview = document.getElementById("btn-refresh-overview");
+  if (btnRefreshOverview) {
+    btnRefreshOverview.addEventListener("click", () => fetchGlobalOverview());
+  }
+
+  // Set default active view mode to HOME Global Overview Command Center
+  setViewMode('home');
+
   // ── BASE AMOUNT (USD) Config Handling ─────────────────────────────────────
   const baseAmountInput = document.getElementById("base-amount-input") as HTMLInputElement;
   const btnSaveBaseAmount = document.getElementById("btn-save-base-amount") as HTMLButtonElement;
@@ -2109,6 +2123,160 @@ function switchActiveInstance(instanceId: string | number) {
   // Volver a consultar APIs REST para la nueva instancia seleccionada
   fetchOpenOrders();
   fetchActivePipelines();
+}
+
+// ── Global Overview Page Controller ──────────────────────────────────────────
+
+interface GlobalOverviewResponse {
+  status: string;
+  portfolio_summary: {
+    total_lifetime_pnl: number;
+    total_trades: number;
+    total_instances: number;
+    active_instances: number;
+  };
+  instances: Array<{
+    id: number;
+    name: string;
+    symbol: string;
+    strategy_type: string;
+    status: string;
+    allocated_capital: number;
+    used_capital: number;
+    lifetime_pnl: number;
+    total_trades: number;
+    winning_trades: number;
+    win_rate_pc: number;
+    traded_volume: number;
+    created_at: string;
+  }>;
+}
+
+function setViewMode(mode: 'home' | 'dashboard') {
+  const overviewPage = document.getElementById("global-overview-page");
+  const dashboardPage = document.getElementById("instance-dashboard-page");
+  const btnNavHome = document.getElementById("btn-nav-home");
+
+  if (mode === 'home') {
+    if (overviewPage) overviewPage.style.display = "flex";
+    if (dashboardPage) dashboardPage.style.display = "none";
+    if (btnNavHome) {
+      btnNavHome.style.background = "#10b981";
+      btnNavHome.style.color = "#000000";
+    }
+    fetchGlobalOverview();
+  } else {
+    if (overviewPage) overviewPage.style.display = "none";
+    if (dashboardPage) dashboardPage.style.display = "flex";
+    if (btnNavHome) {
+      btnNavHome.style.background = "#1f2937";
+      btnNavHome.style.color = "#d1d5db";
+    }
+  }
+}
+
+async function fetchGlobalOverview() {
+  const parentPort = config.parent_api_port || "8000";
+  const tbody = document.getElementById("overview-instances-tbody");
+  try {
+    const response = await fetch(`http://127.0.0.1:${parentPort}/api/instances/overview`);
+    if (response.ok) {
+      const data: GlobalOverviewResponse = await response.json();
+      renderGlobalOverview(data);
+    } else {
+      if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="padding: 24px; text-align: center; color: #ef4444;">Error al cargar la matriz de instancias (HTTP ${response.status})</td></tr>`;
+    }
+  } catch (err) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="padding: 24px; text-align: center; color: #ef4444;">Fallo de conexión al backend maestro</td></tr>`;
+  }
+}
+
+function renderGlobalOverview(data: GlobalOverviewResponse) {
+  const summary = data.portfolio_summary;
+  const instances = data.instances;
+
+  // Header Cards
+  const pnlEl = document.getElementById("ov-lifetime-pnl-val");
+  const tradesEl = document.getElementById("ov-total-trades-val");
+  const activeEl = document.getElementById("ov-active-bots-val");
+  const winrateEl = document.getElementById("ov-winrate-val");
+
+  if (pnlEl) {
+    const sign = summary.total_lifetime_pnl > 0 ? '+' : '';
+    pnlEl.innerText = `$${sign}${summary.total_lifetime_pnl.toFixed(4)}`;
+    pnlEl.style.color = summary.total_lifetime_pnl > 0 ? '#10b981' : summary.total_lifetime_pnl < 0 ? '#ef4444' : '#9ca3af';
+  }
+  if (tradesEl) tradesEl.innerText = summary.total_trades.toString();
+  if (activeEl) activeEl.innerText = `${summary.active_instances} / ${summary.total_instances}`;
+
+  // Portfolio overall winrate calculation
+  if (winrateEl) {
+    const totalWinTrades = instances.reduce((acc, inst) => acc + inst.winning_trades, 0);
+    const overallWinRate = summary.total_trades > 0 ? (totalWinTrades / summary.total_trades) * 100 : 0;
+    winrateEl.innerText = `${overallWinRate.toFixed(2)}%`;
+  }
+
+  // Render Instance Matrix Rows
+  const tbody = document.getElementById("overview-instances-tbody");
+  if (!tbody) return;
+
+  if (instances.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="padding: 24px; text-align: center; color: #64748b;">No hay instancias configuradas en el sistema.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = instances.map(inst => {
+    const statusColor = getInstanceStatusColor(inst.status);
+    const pnlSign = inst.lifetime_pnl > 0 ? '+' : '';
+    const pnlColor = inst.lifetime_pnl > 0 ? '#10b981' : inst.lifetime_pnl < 0 ? '#ef4444' : '#9ca3af';
+
+    return `
+      <tr style="border-bottom: 1px solid #1f2937; transition: background 0.15s ease;" onmouseover="this.style.background='#1f2937'" onmouseout="this.style.background='transparent'">
+        <td style="padding: 14px 16px;">
+          <div style="font-weight: bold; color: #f8fafc;">#${inst.id} - ${inst.name}</div>
+          <div style="font-size: 11px; color: #64748b;">${inst.symbol} · ${inst.strategy_type}</div>
+        </td>
+        <td style="padding: 14px 16px;">
+          <span style="display: inline-flex; align-items: center; gap: 6px; color: ${statusColor}; font-weight: bold; font-size: 11px; background: rgba(15,23,42,0.8); padding: 3px 8px; border-radius: 4px; border: 1px solid ${statusColor}44;">
+            <span style="width: 6px; height: 6px; border-radius: 50%; background: ${statusColor};"></span>
+            ${inst.status}
+          </span>
+        </td>
+        <td style="padding: 14px 16px; text-align: right; font-weight: bold; color: ${pnlColor};">
+          $${pnlSign}${inst.lifetime_pnl.toFixed(4)}
+        </td>
+        <td style="padding: 14px 16px; text-align: right; font-weight: bold; color: #3b82f6;">
+          ${inst.total_trades}
+        </td>
+        <td style="padding: 14px 16px; text-align: right; font-weight: bold; color: #f59e0b;">
+          ${inst.win_rate_pc.toFixed(2)}%
+        </td>
+        <td style="padding: 14px 16px; text-align: right; color: #cbd5e1;">
+          $${inst.traded_volume.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </td>
+        <td style="padding: 14px 16px; text-align: right; color: #94a3b8;">
+          $${inst.allocated_capital} / <span style="color: #6366f1;">$${inst.used_capital.toFixed(2)}</span>
+        </td>
+        <td style="padding: 14px 16px; text-align: center;">
+          <button class="btn-monitor-instance" data-id="${inst.id}" style="background: #3b82f6; color: #ffffff; border: none; border-radius: 4px; padding: 4px 10px; font-family: inherit; font-size: 11px; font-weight: bold; cursor: pointer; transition: transform 0.1s ease;" title="Monitorear esta instancia en el Dashboard">
+            📊 MONITOREAR →
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  // Attach click listeners to monitor buttons
+  document.querySelectorAll(".btn-monitor-instance").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const targetBtn = e.currentTarget as HTMLButtonElement;
+      const instId = targetBtn.getAttribute("data-id");
+      if (instId) {
+        switchActiveInstance(instId);
+        setViewMode('dashboard');
+      }
+    });
+  });
 }
 
 async function saveInstanceConfigHot() {
