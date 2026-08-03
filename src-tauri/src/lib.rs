@@ -162,8 +162,15 @@ async fn start_binance_private_stream(app_handle: AppHandle) {
     }
 }
 
+use std::sync::atomic::{AtomicBool, Ordering};
+static STREAM_STARTED: AtomicBool = AtomicBool::new(false);
+
 #[tauri::command]
 fn start_private_stream(app_handle: AppHandle) {
+    if STREAM_STARTED.swap(true, Ordering::SeqCst) {
+        println!("[Rust WS] Direct stream already running in background process. Skipping duplicate spawn.");
+        return;
+    }
     let handle = app_handle.clone();
     tauri::async_runtime::spawn(async move {
         start_binance_private_stream(handle).await;

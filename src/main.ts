@@ -1773,21 +1773,6 @@ function updateModificationsList(mods: ModificationInfo[]) {
 function handleBinancePrivateEvent(rawData: string) {
   try {
     addLog(`[PRIVATE DIRECT RX] Payload: ${rawData.slice(0, 150)}...`, 'success');
-    // ── Diagnostic Marker Injector ──
-    // This forces a visual blue query dot on the chart for EVERY message received from Rust Core
-    // to visually confirm that the communication channel works.
-    const priceValDiag = history.length > 0 ? history[history.length - 1].bid : 0;
-    hftEvents.push({
-      e: 'HFT_EVENT',
-      type: 'query',
-      time: Date.now(),
-      price: priceValDiag,
-      qty: 0,
-      symbol: 'DIAGNOSTIC',
-      detail: `[Rust WS Payload Received] Length: ${rawData.length} bytes`
-    });
-    if (hftEvents.length > 500) hftEvents.shift();
-    drawChart();
 
     const event = JSON.parse(rawData);
     if (!event || !event.e) return;
