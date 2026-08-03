@@ -141,6 +141,9 @@ let modifiedValEl: HTMLElement | null = null;
 let buySellValEl: HTMLElement | null = null;
 let sessionPnLValEl: HTMLElement | null = null;
 let unrealizedPnLValEl: HTMLElement | null = null;
+let pnlRateValEl: HTMLElement | null = null;
+let sessionTimeValEl: HTMLElement | null = null;
+const sessionStartTimeMap = new Map<number, number>();
 
 let canvasEl: HTMLCanvasElement | null = null;
 let samplesSelectEl: HTMLSelectElement | null = null;
@@ -1202,8 +1205,18 @@ async function fetchActivePipelines() {
     fetch(`http://127.0.0.1:${parentPort}/api/sessions/current?instance_id=${targetInstId}`)
       .then(res => res.ok ? res.json() : null)
       .then(resData => {
-        if (resData && resData.data && typeof resData.data.net_pnl === 'number') {
-          sessionMetrics.setRealizedPnL(resData.data.net_pnl, targetInstId);
+        if (resData && resData.data) {
+          if (typeof resData.data.net_pnl === 'number') {
+            sessionMetrics.setRealizedPnL(resData.data.net_pnl, targetInstId);
+          }
+          if (resData.data.start_time) {
+            const rawStr = String(resData.data.start_time);
+            const isoStr = rawStr.endsWith('Z') ? rawStr : rawStr + 'Z';
+            const parsedTs = new Date(isoStr).getTime();
+            if (!isNaN(parsedTs)) {
+              sessionStartTimeMap.set(targetInstId, parsedTs);
+            }
+          }
         }
       })
       .catch(() => {});
@@ -1366,6 +1379,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   buySellValEl = document.getElementById("buy-sell-val");
   sessionPnLValEl = document.getElementById("session-pnl-val");
   unrealizedPnLValEl = document.getElementById("unrealized-pnl-val");
+  pnlRateValEl = document.getElementById("pnl-rate-val");
+  sessionTimeValEl = document.getElementById("session-time-val");
 
   canvasEl = document.getElementById("hft-chart") as HTMLCanvasElement;
   modsListEl = document.getElementById("mods-list");
@@ -1902,6 +1917,28 @@ function updatePnLDisplay(currentBid: number, currentAsk: number) {
     const sign = unrealizedPnL > 0 ? '+' : '';
     unrealizedPnLValEl.innerText = `$${sign}${unrealizedPnL.toFixed(4)}`;
     unrealizedPnLValEl.className = 'card-price ' + (unrealizedPnL > 0 ? 'pnl-positive' : unrealizedPnL < 0 ? 'pnl-negative' : 'pnl-neutral');
+  }
+
+  if (pnlRateValEl) {
+    const combinedTotalPnL = realizedPnL + unrealizedPnL;
+    const startTimeMs = sessionStartTimeMap.get(targetInstId) || Date.now();
+    const rawElapsedMs = Date.now() - startTimeMs;
+    // Cap elapsed time to a minimum of 60 seconds (0.0166h) to prevent huge runaway ratios on session start
+    const elapsedMs = Math.max(60000, rawElapsedMs > 0 ? rawElapsedMs : 60000);
+    const elapsedHours = elapsedMs / (1000 * 3600);
+    const pnlPerHour = combinedTotalPnL / elapsedHours;
+
+    const sign = pnlPerHour > 0 ? '+' : '';
+    pnlRateValEl.innerText = `$${sign}${pnlPerHour.toFixed(4)} /h`;
+    pnlRateValEl.className = 'card-price ' + (pnlPerHour > 0 ? 'pnl-positive' : pnlPerHour < 0 ? 'pnl-negative' : 'pnl-neutral');
+
+    if (sessionTimeValEl) {
+      const displayMs = Math.max(0, rawElapsedMs);
+      const totalSec = Math.floor(displayMs / 1000);
+      const hours = Math.floor(totalSec / 3600);
+      const mins = Math.floor((totalSec % 3600) / 60);
+      sessionTimeValEl.innerText = `${hours}h ${mins}m`;
+    }
   }
 }
 
