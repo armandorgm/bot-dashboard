@@ -26,8 +26,9 @@
           </div>
         </div>
         <div class="header-right">
-
-
+          <div class="metric-group">
+            <button id="btn-nav-home" style="background: #10b981; color: #000000; border: none; border-radius: 4px; padding: 4px 12px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;" title="Ir a la Vista Global Command Center">🏠 HOME</button>
+          </div>
 
           <div class="metric-group" style="display: flex; items-center; gap: 4px;">
             <span class="metric-label">BASE USD:</span>
@@ -39,6 +40,79 @@
           </div>
         </div>
       </header>
+
+      <!-- GLOBAL OVERVIEW PAGE (COMMAND CENTER) -->
+      <section id="global-overview-page" style="display: none; flex-direction: column; gap: 20px; padding: 20px 0;">
+        <!-- Overview Header Banner -->
+        <div style="background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%); border: 1px solid #3730a3; border-radius: 12px; padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);">
+          <div>
+            <h2 style="margin: 0 0 6px 0; font-size: 20px; font-weight: 800; color: #f8fafc; font-family: 'JetBrains Mono', monospace; display: flex; align-items: center; gap: 10px;">
+              <span>🌐</span> GLOBAL COMMAND CENTER
+            </h2>
+            <p style="margin: 0; font-size: 13px; color: #94a3b8; font-family: 'JetBrains Mono', monospace;">
+              Visión integral y métricas acumuladas de la totalidad del tiempo por instancia.
+            </p>
+          </div>
+          <button id="btn-refresh-overview" style="background: #4f46e5; color: #ffffff; border: none; border-radius: 6px; padding: 8px 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);">
+            🔄 Actualizar Matriz
+          </button>
+        </div>
+
+        <!-- Global Summary Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+          <div style="background: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 16px; font-family: 'JetBrains Mono', monospace;">
+            <span style="font-size: 11px; color: #9ca3af; font-weight: bold; display: block; margin-bottom: 6px;">LIFETIME PnL TOTAL</span>
+            <span id="ov-lifetime-pnl-val" style="font-size: 22px; font-weight: 800; color: #10b981;">$0.0000</span>
+          </div>
+
+          <div style="background: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 16px; font-family: 'JetBrains Mono', monospace;">
+            <span style="font-size: 11px; color: #9ca3af; font-weight: bold; display: block; margin-bottom: 6px;">TOTAL TRADES HISTÓRICOS</span>
+            <span id="ov-total-trades-val" style="font-size: 22px; font-weight: 800; color: #3b82f6;">0</span>
+          </div>
+
+          <div style="background: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 16px; font-family: 'JetBrains Mono', monospace;">
+            <span style="font-size: 11px; color: #9ca3af; font-weight: bold; display: block; margin-bottom: 6px;">INSTANCIAS ACTIVAS</span>
+            <span id="ov-active-bots-val" style="font-size: 22px; font-weight: 800; color: #6366f1;">0 / 0</span>
+          </div>
+
+          <div style="background: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 16px; font-family: 'JetBrains Mono', monospace;">
+            <span style="font-size: 11px; color: #9ca3af; font-weight: bold; display: block; margin-bottom: 6px;">WIN RATE PORTAFOLIO</span>
+            <span id="ov-winrate-val" style="font-size: 22px; font-weight: 800; color: #f59e0b;">0.00%</span>
+          </div>
+        </div>
+
+        <!-- Instance Cards Matrix Table -->
+        <div style="background: #111827; border: 1px solid #1f2937; border-radius: 12px; overflow: hidden; font-family: 'JetBrains Mono', monospace;">
+          <div style="padding: 16px 20px; background: #1f2937; border-bottom: 1px solid #374151; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 14px; font-weight: bold; color: #f3f4f6; display: flex; align-items: center; gap: 8px;">
+              <span>📊</span> MATRIZ EJECUTIVA DE INSTANCIAS (HISTÓRICO COMPLETO)
+            </h3>
+            <span style="font-size: 11px; color: #9ca3af;">Ordenado por actividad</span>
+          </div>
+
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;">
+              <thead>
+                <tr style="background: #161b22; color: #9ca3af; border-bottom: 1px solid #1f2937;">
+                  <th style="padding: 12px 16px;">BOT INSTANCE</th>
+                  <th style="padding: 12px 16px;">ESTADO</th>
+                  <th style="padding: 12px 16px; text-align: right;">LIFETIME PnL ($)</th>
+                  <th style="padding: 12px 16px; text-align: right;">TRADES</th>
+                  <th style="padding: 12px 16px; text-align: right;">WIN RATE</th>
+                  <th style="padding: 12px 16px; text-align: right;">VOLUMEN ($)</th>
+                  <th style="padding: 12px 16px; text-align: right;">CAPITAL (ASIG/USADO)</th>
+                  <th style="padding: 12px 16px; text-align: center;">ACCIÓN</th>
+                </tr>
+              </thead>
+              <tbody id="overview-instances-tbody">
+                <tr>
+                  <td colspan="8" style="padding: 24px; text-align: center; color: #64748b;">Cargando matriz global de instancias...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
 
       <!-- INSTANCES CONFIGURATION MODAL -->
       <div id="instances-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); z-index: 9999; justify-content: center; align-items: center; padding: 20px;">
@@ -148,8 +222,10 @@
       </div>
 
 
-      <!-- TICKER REAL-TIME DISPLAY -->
-      <section class="ticker-strip">
+      <!-- INSTANCE DASHBOARD PAGE -->
+      <div id="instance-dashboard-page" style="display: flex; flex-direction: column; gap: 16px;">
+        <!-- TICKER REAL-TIME DISPLAY -->
+        <section class="ticker-strip">
         <div class="ticker-card bid-card">
           <span class="card-label">BID</span>
           <span class="card-price" id="bid-val">--</span>
@@ -391,9 +467,9 @@
               </label>
             </div>
           </div>
-
         </div>
       </section>
+      </div> <!-- End #instance-dashboard-page -->
 
     </main>
   </body>
