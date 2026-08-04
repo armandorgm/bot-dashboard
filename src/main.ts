@@ -2278,7 +2278,9 @@ interface GlobalOverviewResponse {
   status: string;
   portfolio_summary: {
     total_lifetime_pnl: number;
+    total_session_pnl?: number;
     total_unrealized_pnl?: number;
+    total_session_unrealized_pnl?: number;
     total_trades: number;
     total_instances: number;
     active_instances: number;
@@ -2368,6 +2370,27 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
     const uSign = globalUnrealized > 0 ? '+' : '';
     unrealizedEl.innerText = `$${uSign}${globalUnrealized.toFixed(4)}`;
     unrealizedEl.style.color = globalUnrealized > 0 ? '#10b981' : globalUnrealized < 0 ? '#ef4444' : '#06b6d4';
+  }
+
+  // Render PORTFOLIO NET TOTAL PnL (Session & Lifetime)
+  const sessNetEl = document.getElementById("ov-session-net-total-val");
+  const lifeNetEl = document.getElementById("ov-lifetime-net-total-val");
+
+  const totalSessPnl = summary.total_session_pnl ?? 0;
+  const totalSessUnrealized = summary.total_session_unrealized_pnl ?? 0;
+  const portfolioSessionNet = totalSessPnl + totalSessUnrealized;
+  const portfolioLifetimeNet = summary.total_lifetime_pnl + (summary.total_unrealized_pnl ?? 0);
+
+  if (sessNetEl) {
+    const sSign = portfolioSessionNet > 0 ? '+' : '';
+    sessNetEl.innerText = `$${sSign}${portfolioSessionNet.toFixed(4)}`;
+    sessNetEl.style.color = portfolioSessionNet > 0 ? '#10b981' : portfolioSessionNet < 0 ? '#ef4444' : '#60a5fa';
+  }
+
+  if (lifeNetEl) {
+    const lSign = portfolioLifetimeNet > 0 ? '+' : '';
+    lifeNetEl.innerText = `$${lSign}${portfolioLifetimeNet.toFixed(4)}`;
+    lifeNetEl.style.color = portfolioLifetimeNet > 0 ? '#10b981' : portfolioLifetimeNet < 0 ? '#ef4444' : '#93c5fd';
   }
   if (tradesEl) tradesEl.innerText = summary.total_trades.toString();
   if (activeEl) activeEl.innerText = `${summary.active_instances} / ${summary.total_instances}`;
