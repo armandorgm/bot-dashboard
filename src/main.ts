@@ -1712,6 +1712,15 @@ window.addEventListener("DOMContentLoaded", async () => {
   fetchActivePipelines();
   setInterval(fetchActivePipelines, 3000);
 
+  // Auto-refresh Global Command Center matrix every 60 seconds (60000ms)
+  fetchGlobalOverview();
+  setInterval(() => {
+    const overviewPage = document.getElementById("global-overview-page");
+    if (overviewPage && overviewPage.style.display !== "none") {
+      fetchGlobalOverview();
+    }
+  }, 60000);
+
   // Initialize data source control panel
   initDataSourceControls();
 });
