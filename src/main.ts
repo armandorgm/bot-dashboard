@@ -2411,7 +2411,29 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
     return;
   }
 
-  tbody.innerHTML = instances.map(inst => {
+  // Sort instances dynamically (DRY & SOLID invariant):
+  // 1) Status Priority (ACTIVE=0, PAUSED=1, STOPPED=2)
+  // 2) NET Session PnL (descending)
+  // 3) NET Lifetime PnL (descending)
+  const statusPriority: Record<string, number> = { ACTIVE: 0, PAUSED: 1, STOPPED: 2 };
+  const sortedInstances = [...instances].sort((a, b) => {
+    const pA = statusPriority[a.status.toUpperCase()] ?? 99;
+    const pB = statusPriority[b.status.toUpperCase()] ?? 99;
+    if (pA !== pB) return pA - pB;
+
+    const isAActiveOrPaused = a.status.toUpperCase() === 'ACTIVE' || a.status.toUpperCase() === 'PAUSED';
+    const isBActiveOrPaused = b.status.toUpperCase() === 'ACTIVE' || b.status.toUpperCase() === 'PAUSED';
+
+    const netSessA = isAActiveOrPaused ? (a.session_pnl || 0) + (a.session_unrealized_pnl || 0) : -999999;
+    const netSessB = isBActiveOrPaused ? (b.session_pnl || 0) + (b.session_unrealized_pnl || 0) : -999999;
+    if (netSessA !== netSessB) return netSessB - netSessA;
+
+    const netLifeA = a.lifetime_pnl + (a.unrealized_pnl || 0);
+    const netLifeB = b.lifetime_pnl + (b.unrealized_pnl || 0);
+    return netLifeB - netLifeA;
+  });
+
+  tbody.innerHTML = sortedInstances.map(inst => {
     const statusColor = getInstanceStatusColor(inst.status);
     const pnlSign = inst.lifetime_pnl > 0 ? '+' : '';
     const pnlColor = inst.lifetime_pnl > 0 ? '#10b981' : inst.lifetime_pnl < 0 ? '#ef4444' : '#9ca3af';
