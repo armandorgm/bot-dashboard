@@ -70,20 +70,22 @@
         </div>
 
         <!-- Global Summary Cards -->
-        <div style="background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 10px; padding: 16px; font-family: 'JetBrains Mono', monospace; display: flex; flex-direction: column; gap: 6px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 11px; color: #60a5fa; font-weight: bold;">PORTFOLIO NET TOTAL PnL</span>
-            <span style="font-size: 0.55rem; color: #93c5fd; text-transform: uppercase;">Realized+Unrealized</span>
+        <div class="diagonal-card" style="border: 1px solid rgba(59, 130, 246, 0.35); min-height: 100px;">
+          <div class="diagonal-card-header">
+            <span class="diagonal-card-title" style="color: #60a5fa;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #60a5fa;"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              PORTFOLIO NET TOTAL PnL
+            </span>
+            <span class="diagonal-card-subhead" style="color: #93c5fd;">Realized+Unrealized</span>
           </div>
-          <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-top: 2px;">
-            <div style="display: flex; flex-direction: column;">
-              <span id="ov-session-net-total-val" style="font-size: 18px; font-weight: 800; color: #60a5fa;">$0.0000</span>
-              <span style="font-size: 10px; color: #64748b; text-transform: uppercase;">Session</span>
+          <div class="diagonal-card-body">
+            <div class="diagonal-top-left">
+              <span class="card-price val-primary" id="ov-session-net-total-val" style="font-size: 1.35rem; color: #60a5fa;">$0.0000</span>
+              <span class="lbl-primary">Session</span>
             </div>
-            <div style="width: 1px; height: 24px; background: rgba(96, 165, 250, 0.2);"></div>
-            <div style="display: flex; flex-direction: column; align-items: flex-end;">
-              <span id="ov-lifetime-net-total-val" style="font-size: 16px; font-weight: 700; color: #93c5fd;">$0.0000</span>
-              <span style="font-size: 10px; color: #64748b; text-transform: uppercase;">Lifetime</span>
+            <div class="diagonal-bottom-right">
+              <span class="val-secondary" id="ov-lifetime-net-total-val" style="font-size: 0.95rem; color: #93c5fd;">$0.0000</span>
+              <span class="lbl-secondary">Lifetime</span>
             </div>
           </div>
         </div>
@@ -293,83 +295,133 @@
 
       <!-- ORDER & SESSION STATS STRIP -->
       <section class="stats-strip">
-        <div class="stats-card net-total-pnl-card" style="display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(59, 130, 246, 0.3);">
-          <!-- Header -->
-          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-            <span class="card-label" style="display: flex; align-items: center; gap: 6px; color: #60a5fa; font-weight: bold;">
+        <!-- 1. NET TOTAL PnL -->
+        <div class="diagonal-card net-total-pnl-card" style="border-color: rgba(59, 130, 246, 0.3);">
+          <div class="diagonal-card-header">
+            <span class="diagonal-card-title" style="color: #60a5fa;">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #60a5fa;"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
               NET TOTAL PnL
             </span>
-            <span style="font-size: 0.55rem; color: #93c5fd; text-transform: uppercase; letter-spacing: 0.05em; font-family: 'JetBrains Mono', monospace;">Realized+Unrealized</span>
+            <span class="diagonal-card-subhead" style="color: #93c5fd;">Realized+Unrealized</span>
           </div>
-          
-          <!-- Dual Metric Area -->
-          <div style="display: flex; flex-direction: row; align-items: flex-end; justify-content: space-between; margin-top: 2px;">
-            <!-- Session Net Total (Primary) -->
-            <div style="display: flex; flex-direction: column; align-items: flex-start;">
-              <span class="card-price" id="session-net-total-val" style="font-size: 1.15rem; line-height: 1;">$0.00</span>
-              <span style="font-size: 0.65rem; color: #64748b; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;">Session</span>
+          <div class="diagonal-card-body">
+            <div class="diagonal-top-left">
+              <span class="card-price val-primary" id="session-net-total-val">$0.0000</span>
+              <span class="lbl-primary">Session</span>
             </div>
-            
-            <!-- Separator -->
-            <div style="width: 1px; height: 26px; background: linear-gradient(to bottom, transparent, rgba(96, 165, 250, 0.3), transparent);"></div>
-            
-            <!-- Instance Lifetime Net Total (Secondary) -->
-            <div style="display: flex; flex-direction: column; align-items: flex-end;">
-              <span id="instance-total-net-val" style="font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; font-weight: 600; line-height: 1;" title="PnL Realizado + No Realizado Total de la Instancia">$0.00</span>
-              <span style="font-size: 0.65rem; color: #64748b; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;">Inst. Total</span>
+            <div class="diagonal-bottom-right">
+              <span class="val-secondary" id="instance-total-net-val" title="PnL Realizado + No Realizado Total de la Instancia">$0.0000</span>
+              <span class="lbl-secondary">Inst. Total</span>
             </div>
           </div>
         </div>
-        <div class="stats-card session-pnl-card">
-          <span class="card-label">SESSION PnL</span>
-          <span class="card-price" id="session-pnl-val">$0.00</span>
+
+        <!-- 2. REALIZED PnL -->
+        <div class="diagonal-card session-pnl-card">
+          <div class="diagonal-card-header">
+            <span class="diagonal-card-title">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #10b981;"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+              REALIZED PnL
+            </span>
+            <span class="diagonal-card-subhead">Closed Trades</span>
+          </div>
+          <div class="diagonal-card-body">
+            <div class="diagonal-top-left">
+              <span class="card-price val-primary" id="session-pnl-val">$0.0000</span>
+              <span class="lbl-primary">Session</span>
+            </div>
+            <div class="diagonal-bottom-right">
+              <span class="val-secondary" id="instance-total-realized-val" title="PnL Realizado Total de la Instancia">$0.0000</span>
+              <span class="lbl-secondary">Inst. Total</span>
+            </div>
+          </div>
         </div>
-        <div class="stats-card unrealized-pnl-card" style="display: flex; flex-direction: column; gap: 8px; padding: 12px 16px;">
-          <!-- Header -->
-          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-            <span class="card-label" style="display: flex; align-items: center; gap: 6px;">
+
+        <!-- 3. UNREALIZED PnL -->
+        <div class="diagonal-card unrealized-pnl-card">
+          <div class="diagonal-card-header">
+            <span class="diagonal-card-title">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #06b6d4; opacity: 0.8;"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
               UNREALIZED PnL
             </span>
             <div style="display: flex; align-items: center; gap: 4px;">
-              <span style="font-size: 0.45rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Live</span>
+              <span class="diagonal-card-subhead">Live</span>
               <span class="pulse-indicator" style="width: 6px; height: 6px; background-color: #06b6d4; border-radius: 50%; box-shadow: 0 0 8px #06b6d4; animation: ds-pulse 2s infinite;"></span>
             </div>
           </div>
-          
-          <!-- Dual Metric Area -->
-          <div style="display: flex; flex-direction: row; align-items: flex-end; justify-content: space-between; margin-top: 2px;">
-            <!-- Session (Primary) -->
-            <div style="display: flex; flex-direction: column; align-items: flex-start;">
-              <span class="card-price" id="unrealized-pnl-val" style="font-size: 1.15rem; line-height: 1;">$0.00</span>
-              <span style="font-size: 0.65rem; color: #64748b; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;">Session</span>
+          <div class="diagonal-card-body">
+            <div class="diagonal-top-left">
+              <span class="card-price val-primary" id="unrealized-pnl-val">$0.0000</span>
+              <span class="lbl-primary">Session</span>
             </div>
-            
-            <!-- Separator -->
-            <div style="width: 1px; height: 26px; background: linear-gradient(to bottom, transparent, rgba(148, 163, 184, 0.2), transparent);"></div>
-            
-            <!-- Instance (Secondary) -->
-            <div style="display: flex; flex-direction: column; align-items: flex-end;">
-              <span id="instance-total-unrealized-val" style="font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; font-weight: 600; line-height: 1;" title="P&L No Realizado Total de la Instancia en Binance">$0.00</span>
-              <span style="font-size: 0.65rem; color: #64748b; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;">Inst. Total</span>
+            <div class="diagonal-bottom-right">
+              <span class="val-secondary" id="instance-total-unrealized-val" title="P&L No Realizado Total de la Instancia en Binance">$0.0000</span>
+              <span class="lbl-secondary">Inst. Total</span>
             </div>
           </div>
         </div>
-        <div class="stats-card pnl-rate-card">
-          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-            <span class="card-label">PnL / HORA (EST)</span>
-            <span id="session-time-val" style="font-size: 0.68rem; color: #64748b; font-family: 'JetBrains Mono', monospace; font-weight: 500;">0h 0m</span>
+
+        <!-- 4. PnL / HORA -->
+        <div class="diagonal-card pnl-rate-card">
+          <div class="diagonal-card-header">
+            <span class="diagonal-card-title">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #f59e0b;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              PnL / HORA
+            </span>
+            <span id="session-time-val" class="diagonal-card-subhead">0h 0m</span>
           </div>
-          <span class="card-price" id="pnl-rate-val">$0.00 /h</span>
+          <div class="diagonal-card-body">
+            <div class="diagonal-top-left">
+              <span class="card-price val-primary" id="pnl-rate-val">$0.0000 /h</span>
+              <span class="lbl-primary">Session Rate</span>
+            </div>
+            <div class="diagonal-bottom-right">
+              <span class="val-secondary" id="instance-total-pnl-rate-val" title="PnL por Hora Estimado del Total de la Instancia">$0.0000 /h</span>
+              <span class="lbl-secondary">Inst. Total</span>
+            </div>
+          </div>
         </div>
-        <div class="stats-card trades-rate-card">
-          <span class="card-label">TRADES/H (SESS / TOTAL)</span>
-          <span class="card-price" id="trades-rate-val">0.0 / 0.0</span>
+
+        <!-- 5. TRADES / HORA -->
+        <div class="diagonal-card trades-rate-card">
+          <div class="diagonal-card-header">
+            <span class="diagonal-card-title">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #8b5cf6;"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              TRADES / HORA
+            </span>
+            <span class="diagonal-card-subhead">Frequency</span>
+          </div>
+          <div class="diagonal-card-body">
+            <div class="diagonal-top-left">
+              <span class="card-price val-primary" id="session-trades-rate-val" style="color: #a78bfa;">0.0 /h</span>
+              <span class="lbl-primary">Session</span>
+            </div>
+            <div class="diagonal-bottom-right">
+              <span class="val-secondary" id="instance-total-trades-rate-val" style="color: #c4b5fd;" title="Frecuencia de Trades/h Total de la Instancia">0.0 /h</span>
+              <span class="lbl-secondary">Inst. Total</span>
+            </div>
+          </div>
         </div>
-        <div class="stats-card trades-pnl-card">
-          <span class="card-label">TRADES (SESS / TOTAL)</span>
-          <span class="card-price" id="trades-count-val">0 / 0</span>
+
+        <!-- 6. TRADES TOTALES -->
+        <div class="diagonal-card trades-pnl-card">
+          <div class="diagonal-card-header">
+            <span class="diagonal-card-title">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #3b82f6;"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+              TRADES
+            </span>
+            <span class="diagonal-card-subhead">Executions</span>
+          </div>
+          <div class="diagonal-card-body">
+            <div class="diagonal-top-left">
+              <span class="card-price val-primary" id="session-trades-count-val" style="color: #60a5fa;">0</span>
+              <span class="lbl-primary">Session</span>
+            </div>
+            <div class="diagonal-bottom-right">
+              <span class="val-secondary" id="instance-total-trades-count-val" style="color: #93c5fd;" title="Total de Trades de la Instancia">0</span>
+              <span class="lbl-secondary">Inst. Total</span>
+            </div>
+          </div>
         </div>
         <div class="stats-card success-card">
           <span class="card-label">PLACED SUCCESS</span>

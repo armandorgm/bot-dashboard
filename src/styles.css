@@ -201,12 +201,143 @@ body {
 .stats-card {
   background: var(--panel-bg);
   border: 1px solid var(--border-color);
-  padding: 16px;
+  padding: 14px 16px;
   border-radius: 12px;
   backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* ── DIAGONAL DUAL METRIC CARDS ─────────────────────────────────────── */
+.diagonal-card {
+  position: relative;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 12px 14px;
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  min-height: 110px;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+}
+
+.diagonal-card:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 0 6px 24px -4px rgba(0, 0, 0, 0.6);
+}
+
+/* Precise diagonal division line cut from top-left to bottom-right */
+.diagonal-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    130deg,
+    rgba(30, 41, 59, 0.4) 0%,
+    rgba(30, 41, 59, 0.4) 47%,
+    rgba(59, 130, 246, 0.2) 48.5%,
+    rgba(59, 130, 246, 0.35) 50%,
+    rgba(59, 130, 246, 0.2) 51.5%,
+    rgba(11, 15, 25, 0.5) 53%,
+    rgba(11, 15, 25, 0.5) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.diagonal-card-header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.diagonal-card-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.diagonal-card-subhead {
+  font-size: 0.55rem;
+  color: #64748b;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.diagonal-card-body {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+}
+
+/* Top-Left Section: Session Metric (Larger) */
+.diagonal-top-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  z-index: 2;
+  margin-top: 1px;
+}
+
+.diagonal-top-left .val-primary {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.diagonal-top-left .lbl-primary {
+  font-size: 0.58rem;
+  font-family: var(--font-mono);
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+/* Bottom-Right Section: Lifetime / Total Metric (Smaller) */
+.diagonal-bottom-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  z-index: 2;
+  margin-top: 4px;
+}
+
+.diagonal-bottom-right .val-secondary {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.diagonal-bottom-right .lbl-secondary {
+  font-size: 0.55rem;
+  font-family: var(--font-mono);
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  margin-top: 1px;
 }
 
 .success-card .card-price {

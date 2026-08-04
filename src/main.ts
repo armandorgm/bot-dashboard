@@ -140,13 +140,19 @@ let placedFailedValEl: HTMLElement | null = null;
 let modifiedValEl: HTMLElement | null = null;
 let buySellValEl: HTMLElement | null = null;
 let sessionPnLValEl: HTMLElement | null = null;
+let instanceTotalRealizedValEl: HTMLElement | null = null;
 let unrealizedPnLValEl: HTMLElement | null = null;
 let instanceTotalUnrealizedValEl: HTMLElement | null = null;
 let sessionNetTotalValEl: HTMLElement | null = null;
 let instanceTotalNetValEl: HTMLElement | null = null;
 let pnlRateValEl: HTMLElement | null = null;
+let instanceTotalPnlRateValEl: HTMLElement | null = null;
 let sessionTimeValEl: HTMLElement | null = null;
+let sessionTradesCountValEl: HTMLElement | null = null;
+let instanceTotalTradesCountValEl: HTMLElement | null = null;
 let tradesCountValEl: HTMLElement | null = null;
+let sessionTradesRateValEl: HTMLElement | null = null;
+let instanceTotalTradesRateValEl: HTMLElement | null = null;
 let tradesRateValEl: HTMLElement | null = null;
 const sessionStartTimeMap = new Map<number, number>();
 
@@ -1392,13 +1398,19 @@ window.addEventListener("DOMContentLoaded", async () => {
   modifiedValEl = document.getElementById("modified-val");
   buySellValEl = document.getElementById("buy-sell-val");
   sessionPnLValEl = document.getElementById("session-pnl-val");
+  instanceTotalRealizedValEl = document.getElementById("instance-total-realized-val");
   unrealizedPnLValEl = document.getElementById("unrealized-pnl-val");
   instanceTotalUnrealizedValEl = document.getElementById("instance-total-unrealized-val");
   sessionNetTotalValEl = document.getElementById("session-net-total-val");
   instanceTotalNetValEl = document.getElementById("instance-total-net-val");
   pnlRateValEl = document.getElementById("pnl-rate-val");
+  instanceTotalPnlRateValEl = document.getElementById("instance-total-pnl-rate-val");
   sessionTimeValEl = document.getElementById("session-time-val");
+  sessionTradesCountValEl = document.getElementById("session-trades-count-val");
+  instanceTotalTradesCountValEl = document.getElementById("instance-total-trades-count-val");
   tradesCountValEl = document.getElementById("trades-count-val");
+  sessionTradesRateValEl = document.getElementById("session-trades-rate-val");
+  instanceTotalTradesRateValEl = document.getElementById("instance-total-trades-rate-val");
   tradesRateValEl = document.getElementById("trades-rate-val");
 
   canvasEl = document.getElementById("hft-chart") as HTMLCanvasElement;
@@ -1958,83 +1970,102 @@ function updatePnLDisplay(currentBid: number, currentAsk: number) {
   if (sessionPnLValEl) {
     const sign = realizedPnL > 0 ? '+' : '';
     sessionPnLValEl.innerText = `$${sign}${realizedPnL.toFixed(4)}`;
-    sessionPnLValEl.className = 'card-price ' + (realizedPnL > 0 ? 'pnl-positive' : realizedPnL < 0 ? 'pnl-negative' : 'pnl-neutral');
+    sessionPnLValEl.className = 'card-price val-primary ' + (realizedPnL > 0 ? 'pnl-positive' : realizedPnL < 0 ? 'pnl-negative' : 'pnl-neutral');
+  }
+
+  const currentInstDataForNet = loadedInstances.find(i => i.id === targetInstId);
+  const instanceLifetimeRealized = currentInstDataForNet ? (currentInstDataForNet.lifetime_pnl || 0) : realizedPnL;
+  if (instanceTotalRealizedValEl) {
+    const totRealSign = instanceLifetimeRealized > 0 ? '+' : '';
+    instanceTotalRealizedValEl.innerText = `$${totRealSign}${instanceLifetimeRealized.toFixed(4)}`;
+    instanceTotalRealizedValEl.className = 'val-secondary ' + (instanceLifetimeRealized > 0 ? 'pnl-positive' : instanceLifetimeRealized < 0 ? 'pnl-negative' : 'pnl-neutral');
   }
 
   if (unrealizedPnLValEl) {
     const sign = unrealizedPnL > 0 ? '+' : '';
     unrealizedPnLValEl.innerText = `$${sign}${unrealizedPnL.toFixed(4)}`;
-    unrealizedPnLValEl.className = 'card-price ' + (unrealizedPnL > 0 ? 'pnl-positive' : unrealizedPnL < 0 ? 'pnl-negative' : 'pnl-neutral');
+    unrealizedPnLValEl.className = 'card-price val-primary ' + (unrealizedPnL > 0 ? 'pnl-positive' : unrealizedPnL < 0 ? 'pnl-negative' : 'pnl-neutral');
   }
 
   const totalInstanceUnrealized = sessionMetrics.calculateUnrealizedPnL(currentBid, currentAsk, config.symbol, targetInstId);
-
   if (instanceTotalUnrealizedValEl) {
-    // Total Instance Unrealized PnL (all open positions of this instance regardless of session start time)
     const totSign = totalInstanceUnrealized > 0 ? '+' : '';
     instanceTotalUnrealizedValEl.innerText = `$${totSign}${totalInstanceUnrealized.toFixed(4)}`;
-    instanceTotalUnrealizedValEl.className = totalInstanceUnrealized > 0 ? 'pnl-positive' : totalInstanceUnrealized < 0 ? 'pnl-negative' : 'pnl-neutral';
+    instanceTotalUnrealizedValEl.className = 'val-secondary ' + (totalInstanceUnrealized > 0 ? 'pnl-positive' : totalInstanceUnrealized < 0 ? 'pnl-negative' : 'pnl-neutral');
   }
 
   // Net Total PnL Calculations (Realized + Unrealized)
-  const currentInstDataForNet = loadedInstances.find(i => i.id === targetInstId);
-  const instanceLifetimeRealized = currentInstDataForNet ? (currentInstDataForNet.lifetime_pnl || 0) : realizedPnL;
-  
   const sessionNetTotal = realizedPnL + unrealizedPnL;
   const instanceLifetimeNetTotal = instanceLifetimeRealized + totalInstanceUnrealized;
 
   if (sessionNetTotalValEl) {
     const netSign = sessionNetTotal > 0 ? '+' : '';
     sessionNetTotalValEl.innerText = `$${netSign}${sessionNetTotal.toFixed(4)}`;
-    sessionNetTotalValEl.className = 'card-price ' + (sessionNetTotal > 0 ? 'pnl-positive' : sessionNetTotal < 0 ? 'pnl-negative' : 'pnl-neutral');
+    sessionNetTotalValEl.className = 'card-price val-primary ' + (sessionNetTotal > 0 ? 'pnl-positive' : sessionNetTotal < 0 ? 'pnl-negative' : 'pnl-neutral');
   }
 
   if (instanceTotalNetValEl) {
     const totNetSign = instanceLifetimeNetTotal > 0 ? '+' : '';
     instanceTotalNetValEl.innerText = `$${totNetSign}${instanceLifetimeNetTotal.toFixed(4)}`;
-    instanceTotalNetValEl.className = instanceLifetimeNetTotal > 0 ? 'pnl-positive' : instanceLifetimeNetTotal < 0 ? 'pnl-negative' : 'pnl-neutral';
+    instanceTotalNetValEl.className = 'val-secondary ' + (instanceLifetimeNetTotal > 0 ? 'pnl-positive' : instanceLifetimeNetTotal < 0 ? 'pnl-negative' : 'pnl-neutral');
   }
 
-  if (pnlRateValEl) {
-    const combinedTotalPnL = realizedPnL + unrealizedPnL;
-    const startTimeMs = sessionStartTimeMap.get(targetInstId) || Date.now();
-    const rawElapsedMs = Date.now() - startTimeMs;
-    // Cap elapsed time to a minimum of 60 seconds (0.0166h) to prevent huge runaway ratios on session start
-    const elapsedMs = Math.max(60000, rawElapsedMs > 0 ? rawElapsedMs : 60000);
-    const elapsedHours = elapsedMs / (1000 * 3600);
-    const pnlPerHour = combinedTotalPnL / elapsedHours;
+  const sessionStartMs = sessionStartTimeMap.get(targetInstId) || Date.now();
+  const rawElapsedMs = Date.now() - sessionStartMs;
+  const elapsedMs = Math.max(60000, rawElapsedMs > 0 ? rawElapsedMs : 60000);
+  const elapsedHours = elapsedMs / (1000 * 3600);
+  const pnlPerHour = sessionNetTotal / elapsedHours;
 
+  if (pnlRateValEl) {
     const sign = pnlPerHour > 0 ? '+' : '';
     pnlRateValEl.innerText = `$${sign}${pnlPerHour.toFixed(4)} /h`;
-    pnlRateValEl.className = 'card-price ' + (pnlPerHour > 0 ? 'pnl-positive' : pnlPerHour < 0 ? 'pnl-negative' : 'pnl-neutral');
+    pnlRateValEl.className = 'card-price val-primary ' + (pnlPerHour > 0 ? 'pnl-positive' : pnlPerHour < 0 ? 'pnl-negative' : 'pnl-neutral');
+  }
 
-    if (sessionTimeValEl) {
-      const displayMs = Math.max(0, rawElapsedMs);
-      const totalSec = Math.floor(displayMs / 1000);
-      const hours = Math.floor(totalSec / 3600);
-      const mins = Math.floor((totalSec % 3600) / 60);
-      sessionTimeValEl.innerText = `${hours}h ${mins}m`;
-    }
+  const instCreatedTs = currentInstDataForNet && (currentInstDataForNet as any).created_at ? new Date((currentInstDataForNet as any).created_at).getTime() : sessionStartMs;
+  const rawTotalElapsedMs = Date.now() - instCreatedTs;
+  const totalElapsedHours = Math.max(0.0166, (rawTotalElapsedMs > 0 ? rawTotalElapsedMs : elapsedMs) / (1000 * 3600));
+  const lifetimePnlPerHour = instanceLifetimeNetTotal / totalElapsedHours;
 
-    // Trades count & rate calculations (DRY helper logic)
-    const currentInstData = loadedInstances.find(i => i.id === targetInstId);
-    const totalTradesCount = currentInstData ? (currentInstData as any).total_trades || 0 : completedSessionProcessIds.size;
-    const sessionTradesCount = completedSessionProcessIds.size;
+  if (instanceTotalPnlRateValEl) {
+    const totPnlRateSign = lifetimePnlPerHour > 0 ? '+' : '';
+    instanceTotalPnlRateValEl.innerText = `$${totPnlRateSign}${lifetimePnlPerHour.toFixed(4)} /h`;
+    instanceTotalPnlRateValEl.className = 'val-secondary ' + (lifetimePnlPerHour > 0 ? 'pnl-positive' : lifetimePnlPerHour < 0 ? 'pnl-negative' : 'pnl-neutral');
+  }
 
-    if (tradesCountValEl) {
-      tradesCountValEl.innerText = `${sessionTradesCount} / ${totalTradesCount}`;
-    }
+  if (sessionTimeValEl) {
+    const displayMs = Math.max(0, rawElapsedMs);
+    const totalSec = Math.floor(displayMs / 1000);
+    const hours = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    sessionTimeValEl.innerText = `${hours}h ${mins}m`;
+  }
 
-    if (tradesRateValEl) {
-      const sessTradesPerHour = sessionTradesCount / elapsedHours;
-      // Estimate total instance uptime assuming instance created_at or lifetime
-      const instCreatedTs = currentInstData && (currentInstData as any).created_at ? new Date((currentInstData as any).created_at).getTime() : startTimeMs;
-      const rawTotalElapsedMs = Date.now() - instCreatedTs;
-      const totalElapsedHours = Math.max(0.0166, (rawTotalElapsedMs > 0 ? rawTotalElapsedMs : elapsedMs) / (1000 * 3600));
-      const totalTradesPerHour = totalTradesCount / totalElapsedHours;
+  // Trades count & rate calculations
+  const totalTradesCount = currentInstDataForNet ? (currentInstDataForNet as any).total_trades || 0 : completedSessionProcessIds.size;
+  const sessionTradesCount = completedSessionProcessIds.size;
 
-      tradesRateValEl.innerText = `${sessTradesPerHour.toFixed(1)} / ${totalTradesPerHour.toFixed(1)}`;
-    }
+  if (sessionTradesCountValEl) {
+    sessionTradesCountValEl.innerText = `${sessionTradesCount}`;
+  }
+  if (instanceTotalTradesCountValEl) {
+    instanceTotalTradesCountValEl.innerText = `${totalTradesCount}`;
+  }
+  if (tradesCountValEl) {
+    tradesCountValEl.innerText = `${sessionTradesCount} / ${totalTradesCount}`;
+  }
+
+  const sessTradesPerHour = sessionTradesCount / elapsedHours;
+  const totalTradesPerHour = totalTradesCount / totalElapsedHours;
+
+  if (sessionTradesRateValEl) {
+    sessionTradesRateValEl.innerText = `${sessTradesPerHour.toFixed(1)} /h`;
+  }
+  if (instanceTotalTradesRateValEl) {
+    instanceTotalTradesRateValEl.innerText = `${totalTradesPerHour.toFixed(1)} /h`;
+  }
+  if (tradesRateValEl) {
+    tradesRateValEl.innerText = `${sessTradesPerHour.toFixed(1)} / ${totalTradesPerHour.toFixed(1)}`;
   }
 }
 
