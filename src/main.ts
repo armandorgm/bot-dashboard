@@ -1952,7 +1952,8 @@ function updatePnLDisplay(currentBid: number, currentAsk: number) {
     // Total Instance Unrealized PnL (all open positions of this instance regardless of session start time)
     const totalInstanceUnrealized = sessionMetrics.calculateUnrealizedPnL(currentBid, currentAsk, config.symbol, targetInstId);
     const totSign = totalInstanceUnrealized > 0 ? '+' : '';
-    instanceTotalUnrealizedValEl.innerText = `Tot: $${totSign}${totalInstanceUnrealized.toFixed(4)}`;
+    instanceTotalUnrealizedValEl.innerText = `$${totSign}${totalInstanceUnrealized.toFixed(4)}`;
+    instanceTotalUnrealizedValEl.className = totalInstanceUnrealized > 0 ? 'pnl-positive' : totalInstanceUnrealized < 0 ? 'pnl-negative' : 'pnl-neutral';
   }
 
   if (pnlRateValEl) {

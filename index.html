@@ -260,12 +260,36 @@
           <span class="card-label">SESSION PnL</span>
           <span class="card-price" id="session-pnl-val">$0.00</span>
         </div>
-        <div class="stats-card unrealized-pnl-card">
+        <div class="stats-card unrealized-pnl-card" style="display: flex; flex-direction: column; gap: 8px; padding: 12px 16px;">
+          <!-- Header -->
           <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-            <span class="card-label">SESSION UNREALIZED PnL</span>
-            <span id="instance-total-unrealized-val" style="font-size: 0.68rem; color: #06b6d4; font-family: 'JetBrains Mono', monospace; font-weight: 500;" title="P&L No Realizado Total de la Instancia en Binance">Tot: $0.00</span>
+            <span class="card-label" style="display: flex; align-items: center; gap: 6px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #06b6d4; opacity: 0.8;"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              UNREALIZED PnL
+            </span>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <span style="font-size: 0.45rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Live</span>
+              <span class="pulse-indicator" style="width: 6px; height: 6px; background-color: #06b6d4; border-radius: 50%; box-shadow: 0 0 8px #06b6d4; animation: ds-pulse 2s infinite;"></span>
+            </div>
           </div>
-          <span class="card-price" id="unrealized-pnl-val">$0.00</span>
+          
+          <!-- Dual Metric Area -->
+          <div style="display: flex; flex-direction: row; align-items: flex-end; justify-content: space-between; margin-top: 2px;">
+            <!-- Session (Primary) -->
+            <div style="display: flex; flex-direction: column; align-items: flex-start;">
+              <span class="card-price" id="unrealized-pnl-val" style="font-size: 1.15rem; line-height: 1;">$0.00</span>
+              <span style="font-size: 0.65rem; color: #64748b; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;">Session</span>
+            </div>
+            
+            <!-- Separator -->
+            <div style="width: 1px; height: 26px; background: linear-gradient(to bottom, transparent, rgba(148, 163, 184, 0.2), transparent);"></div>
+            
+            <!-- Instance (Secondary) -->
+            <div style="display: flex; flex-direction: column; align-items: flex-end;">
+              <span id="instance-total-unrealized-val" style="font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; font-weight: 600; line-height: 1;" title="P&L No Realizado Total de la Instancia en Binance">$0.00</span>
+              <span style="font-size: 0.65rem; color: #64748b; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;">Inst. Total</span>
+            </div>
+          </div>
         </div>
         <div class="stats-card pnl-rate-card">
           <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
