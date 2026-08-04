@@ -2642,6 +2642,7 @@ async function saveInstanceConfigHot() {
   const threshEl = document.getElementById("inst-edit-threshold-pc") as HTMLInputElement;
   const chaseEl = document.getElementById("inst-edit-chase") as HTMLSelectElement;
   const sideStratEl = document.getElementById("inst-edit-side-strategy") as HTMLSelectElement;
+  const reduceOnlyStratEl = document.getElementById("inst-edit-reduce-only-strategy") as HTMLSelectElement;
   const bypassEl = document.getElementById("inst-edit-bypass-guards") as HTMLInputElement;
   const disableScaleEl = document.getElementById("inst-edit-disable-scaling") as HTMLInputElement;
 
@@ -2662,8 +2663,10 @@ async function saveInstanceConfigHot() {
   if (threshEl) updatedParams["threshold_pc"] = parseFloat(threshEl.value) / 100.0;
   if (chaseEl) updatedParams["chase_behavior"] = chaseEl.value;
   if (sideStratEl) updatedParams["side_strategy"] = sideStratEl.value;
+  if (reduceOnlyStratEl) updatedParams["reduce_only_strategy"] = reduceOnlyStratEl.value;
   if (bypassEl) updatedParams["bypass_global_guards"] = bypassEl.checked;
   if (disableScaleEl) updatedParams["disable_balance_scaling"] = disableScaleEl.checked;
+
 
   const payload = {
     name: nameEl?.value || "Instance",
