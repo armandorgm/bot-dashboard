@@ -2132,9 +2132,9 @@ async function refreshInstanceModalDropdown() {
 
   // Select matching active instance or first
   const currentInstanceIdNum = parseInt(config?.instance_id || "1", 10);
-  const match = loadedInstances.find(i => i.id === currentInstanceIdNum) || loadedInstances[0];
+  const match = loadedInstances.find(i => i.id === (selectedInstanceId || currentInstanceIdNum)) || loadedInstances[0];
 
-  if (match) {
+  if (match && !isCreatingNewInstance) {
     selectedInstanceId = match.id;
     if (selectDropdown) selectDropdown.value = match.id.toString();
     renderInstanceForm(match);
@@ -2461,11 +2461,47 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
   });
 }
 
-async function saveInstanceConfigHot() {
-  if (!selectedInstanceId) return;
+let isCreatingNewInstance = false;
 
+function prepareNewInstanceForm() {
+  isCreatingNewInstance = true;
+  selectedInstanceId = null;
+
+  const saveBtn = document.getElementById("btn-save-instance-modal");
   const feedbackEl = document.getElementById("instance-status-feedback");
-  if (feedbackEl) feedbackEl.innerText = "Guardando cambios en caliente...";
+  if (saveBtn) {
+    saveBtn.innerHTML = "➕ Crear Instancia";
+    (saveBtn as HTMLElement).style.background = "#2563eb";
+  }
+  if (feedbackEl) feedbackEl.innerText = "Modo: Nueva Instancia. Complete el formulario y guarde.";
+
+  const defaultNewInstance: BotInstanceData = {
+    id: 0,
+    name: "NUEVA INSTANCIA",
+    symbol: "1000PEPEUSDC",
+    strategy_type: "GRID",
+    allocated_capital: 50.0,
+    used_capital: 0.0,
+    status: "PAUSED",
+    params: {
+      profit_pc: 0.005,
+      threshold_pc: 0.01,
+      chase_behavior: "flat",
+      bypass_global_guards: false,
+      disable_balance_scaling: false
+    }
+  };
+
+  renderInstanceForm(defaultNewInstance);
+}
+
+async function saveInstanceConfigHot() {
+  const saveBtn = document.getElementById("btn-save-instance-modal");
+  const feedbackEl = document.getElementById("instance-status-feedback");
+  
+  if (!isCreatingNewInstance && !selectedInstanceId) return;
+
+  if (feedbackEl) feedbackEl.innerText = isCreatingNewInstance ? "Creando nueva instancia..." : "Guardando cambios en caliente...";
 
   const nameEl = document.getElementById("inst-edit-name") as HTMLInputElement;
   const symbolEl = document.getElementById("inst-edit-symbol") as HTMLInputElement;
@@ -2509,29 +2545,44 @@ async function saveInstanceConfigHot() {
 
   try {
     const parentPort = config?.parent_api_port || "8000";
-    const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${selectedInstanceId}`, {
-      method: "PUT",
+    const url = isCreatingNewInstance 
+      ? `http://127.0.0.1:${parentPort}/api/grid/instances`
+      : `http://127.0.0.1:${parentPort}/api/grid/instances/${selectedInstanceId}`;
+    const method = isCreatingNewInstance ? "POST" : "PUT";
+
+    const res = await fetch(url, {
+      method: method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(errData.detail || "Error actualizando instancia");
+      throw new Error(errData.detail || (isCreatingNewInstance ? "Error creando instancia" : "Error actualizando instancia"));
     }
 
-    await res.json();
-    if (feedbackEl) feedbackEl.innerText = "✅ Configuración actualizada y sincronizada en caliente.";
-    addLog(`[INSTANCES] Instancia #${selectedInstanceId} guardada exitosamente. Status: ${payload.status}`, "success");
+    const resData = await res.json();
+    const createdOrUpdatedId = resData.instance?.id || selectedInstanceId;
+
+    if (feedbackEl) feedbackEl.innerText = isCreatingNewInstance ? "✅ Instancia creada exitosamente." : "✅ Configuración actualizada y sincronizada en caliente.";
+    addLog(`[INSTANCES] Instancia #${createdOrUpdatedId} ${isCreatingNewInstance ? 'creada' : 'guardada'} exitosamente. Status: ${payload.status}`, "success");
+
+    // Reset create flag & switch selected ID to created instance
+    isCreatingNewInstance = false;
+    selectedInstanceId = createdOrUpdatedId;
+    if (saveBtn) {
+      saveBtn.innerHTML = "💾 Guardar en Caliente";
+      (saveBtn as HTMLElement).style.background = "#10b981";
+    }
 
     // Refresh list
     setTimeout(() => {
       refreshInstanceModalDropdown();
-    }, 1000);
+    }, 500);
   } catch (err: any) {
-    console.error("Failed to save instance config:", err);
+    console.error("Failed to save/create instance config:", err);
     if (feedbackEl) feedbackEl.innerText = `❌ Error: ${err.message}`;
-    addLog(`[INSTANCES] Error guardando instancia: ${err.message}`, "err");
+    addLog(`[INSTANCES] Error en la operación de instancia: ${err.message}`, "err");
   }
 }
 
@@ -2541,6 +2592,7 @@ function initInstanceModalListeners() {
   const closeBtn = document.getElementById("btn-close-instance-modal");
   const cancelBtn = document.getElementById("btn-cancel-instance-modal");
   const refreshBtn = document.getElementById("btn-refresh-instances");
+  const newInstBtn = document.getElementById("btn-new-instance");
   const saveBtn = document.getElementById("btn-save-instance-modal");
   const selectDropdown = document.getElementById("instance-select-dropdown") as HTMLSelectElement;
   const headerSelector = document.getElementById("header-instance-selector") as HTMLSelectElement;
@@ -2555,21 +2607,43 @@ function initInstanceModalListeners() {
 
   if (openBtn) {
     openBtn.addEventListener("click", () => {
+      isCreatingNewInstance = false;
+      if (saveBtn) {
+        saveBtn.innerHTML = "💾 Guardar en Caliente";
+        (saveBtn as HTMLElement).style.background = "#10b981";
+      }
       if (modalEl) modalEl.style.display = "flex";
       refreshInstanceModalDropdown();
     });
   }
 
   const closeModal = () => {
+    isCreatingNewInstance = false;
     if (modalEl) modalEl.style.display = "none";
   };
 
   if (closeBtn) closeBtn.addEventListener("click", closeModal);
   if (cancelBtn) cancelBtn.addEventListener("click", closeModal);
-  if (refreshBtn) refreshBtn.addEventListener("click", () => refreshInstanceModalDropdown());
+  if (refreshBtn) refreshBtn.addEventListener("click", () => {
+    isCreatingNewInstance = false;
+    if (saveBtn) {
+      saveBtn.innerHTML = "💾 Guardar en Caliente";
+      (saveBtn as HTMLElement).style.background = "#10b981";
+    }
+    refreshInstanceModalDropdown();
+  });
+
+  if (newInstBtn) {
+    newInstBtn.addEventListener("click", () => prepareNewInstanceForm());
+  }
 
   if (selectDropdown) {
     selectDropdown.addEventListener("change", () => {
+      isCreatingNewInstance = false;
+      if (saveBtn) {
+        saveBtn.innerHTML = "💾 Guardar en Caliente";
+        (saveBtn as HTMLElement).style.background = "#10b981";
+      }
       const selectedIdNum = parseInt(selectDropdown.value, 10);
       const match = loadedInstances.find(i => i.id === selectedIdNum);
       if (match) {
