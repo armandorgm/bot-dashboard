@@ -2112,6 +2112,8 @@ function renderInstanceForm(inst: BotInstanceData) {
   const threshEl = document.getElementById("inst-edit-threshold-pc") as HTMLInputElement;
   const chaseEl = document.getElementById("inst-edit-chase") as HTMLSelectElement;
   const sideStratEl = document.getElementById("inst-edit-side-strategy") as HTMLSelectElement;
+  const reduceOnlyStratEl = document.getElementById("inst-edit-reduce-only-strategy") as HTMLSelectElement;
+  const execStratEl = document.getElementById("inst-edit-execution-strategy") as HTMLSelectElement;
   const bypassEl = document.getElementById("inst-edit-bypass-guards") as HTMLInputElement;
   const disableScaleEl = document.getElementById("inst-edit-disable-scaling") as HTMLInputElement;
 
@@ -2127,7 +2129,9 @@ function renderInstanceForm(inst: BotInstanceData) {
   if (profitEl) profitEl.value = ((params.profit_pc ?? 0.005) * 100).toFixed(3);
   if (threshEl) threshEl.value = ((params.threshold_pc ?? 0.01) * 100).toFixed(3);
   if (chaseEl) chaseEl.value = params.chase_behavior || "flat";
-  if (sideStratEl) sideStratEl.value = params.side_strategy || "ANCHOR_PARITY";
+  if (sideStratEl) sideStratEl.value = params.side_strategy || "WEIGHTED_MAJORITY_2IN3";
+  if (reduceOnlyStratEl) reduceOnlyStratEl.value = params.reduce_only_strategy || "NEVER";
+  if (execStratEl) execStratEl.value = params.execution_strategy || "CHASE_V2";
   if (bypassEl) bypassEl.checked = !!params.bypass_global_guards;
   if (disableScaleEl) disableScaleEl.checked = !!params.disable_balance_scaling;
 
@@ -2616,6 +2620,8 @@ function prepareNewInstanceForm() {
       threshold_pc: 0.01,
       chase_behavior: "flat",
       side_strategy: "WEIGHTED_MAJORITY_2IN3",
+      reduce_only_strategy: "NEVER",
+      execution_strategy: "CHASE_V2",
       bypass_global_guards: false,
       disable_balance_scaling: false
     }
@@ -2643,6 +2649,7 @@ async function saveInstanceConfigHot() {
   const chaseEl = document.getElementById("inst-edit-chase") as HTMLSelectElement;
   const sideStratEl = document.getElementById("inst-edit-side-strategy") as HTMLSelectElement;
   const reduceOnlyStratEl = document.getElementById("inst-edit-reduce-only-strategy") as HTMLSelectElement;
+  const execStratEl = document.getElementById("inst-edit-execution-strategy") as HTMLSelectElement;
   const bypassEl = document.getElementById("inst-edit-bypass-guards") as HTMLInputElement;
   const disableScaleEl = document.getElementById("inst-edit-disable-scaling") as HTMLInputElement;
 
@@ -2664,6 +2671,7 @@ async function saveInstanceConfigHot() {
   if (chaseEl) updatedParams["chase_behavior"] = chaseEl.value;
   if (sideStratEl) updatedParams["side_strategy"] = sideStratEl.value;
   if (reduceOnlyStratEl) updatedParams["reduce_only_strategy"] = reduceOnlyStratEl.value;
+  if (execStratEl) updatedParams["execution_strategy"] = execStratEl.value;
   if (bypassEl) updatedParams["bypass_global_guards"] = bypassEl.checked;
   if (disableScaleEl) updatedParams["disable_balance_scaling"] = disableScaleEl.checked;
 
