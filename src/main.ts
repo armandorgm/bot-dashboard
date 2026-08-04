@@ -1069,11 +1069,13 @@ function connectWebSocket() {
 
 // Sizing logic
 function handleResize() {
-  if (!canvasEl) return;
-  const rect = canvasEl.parentElement!.getBoundingClientRect();
-  canvasEl.width = rect.width;
-  canvasEl.height = rect.height;
-  drawChart();
+  if (!canvasEl || !canvasEl.parentElement) return;
+  const rect = canvasEl.parentElement.getBoundingClientRect();
+  if (rect.width > 0 && rect.height > 0) {
+    canvasEl.width = rect.width;
+    canvasEl.height = rect.height;
+    drawChart();
+  }
 }
 
 // Open Orders management
@@ -2271,6 +2273,8 @@ function setViewMode(mode: 'home' | 'dashboard') {
       btnNavHome.style.background = "#1f2937";
       btnNavHome.style.color = "#d1d5db";
     }
+    // Re-calculate canvas layout dimensions once container is visible
+    setTimeout(handleResize, 50);
   }
 }
 
