@@ -2114,6 +2114,7 @@ function renderInstanceForm(inst: BotInstanceData) {
   const sideStratEl = document.getElementById("inst-edit-side-strategy") as HTMLSelectElement;
   const reduceOnlyStratEl = document.getElementById("inst-edit-reduce-only-strategy") as HTMLSelectElement;
   const execStratEl = document.getElementById("inst-edit-execution-strategy") as HTMLSelectElement;
+  const entryTtlEl = document.getElementById("inst-edit-entry-ttl") as HTMLInputElement;
   const bypassEl = document.getElementById("inst-edit-bypass-guards") as HTMLInputElement;
   const disableScaleEl = document.getElementById("inst-edit-disable-scaling") as HTMLInputElement;
 
@@ -2132,6 +2133,7 @@ function renderInstanceForm(inst: BotInstanceData) {
   if (sideStratEl) sideStratEl.value = params.side_strategy || "WEIGHTED_MAJORITY_2IN3";
   if (reduceOnlyStratEl) reduceOnlyStratEl.value = params.reduce_only_strategy || "NEVER";
   if (execStratEl) execStratEl.value = params.execution_strategy || "STATIC_LIMIT";
+  if (entryTtlEl) entryTtlEl.value = (params.entry_ttl_seconds ?? 10).toString();
   if (bypassEl) bypassEl.checked = !!params.bypass_global_guards;
   if (disableScaleEl) disableScaleEl.checked = !!params.disable_balance_scaling;
 
@@ -2622,6 +2624,7 @@ function prepareNewInstanceForm() {
       side_strategy: "WEIGHTED_MAJORITY_2IN3",
       reduce_only_strategy: "NEVER",
       execution_strategy: "STATIC_LIMIT",
+      entry_ttl_seconds: 10,
       bypass_global_guards: false,
       disable_balance_scaling: false
     }
@@ -2650,6 +2653,7 @@ async function saveInstanceConfigHot() {
   const sideStratEl = document.getElementById("inst-edit-side-strategy") as HTMLSelectElement;
   const reduceOnlyStratEl = document.getElementById("inst-edit-reduce-only-strategy") as HTMLSelectElement;
   const execStratEl = document.getElementById("inst-edit-execution-strategy") as HTMLSelectElement;
+  const entryTtlEl = document.getElementById("inst-edit-entry-ttl") as HTMLInputElement;
   const bypassEl = document.getElementById("inst-edit-bypass-guards") as HTMLInputElement;
   const disableScaleEl = document.getElementById("inst-edit-disable-scaling") as HTMLInputElement;
 
@@ -2672,6 +2676,7 @@ async function saveInstanceConfigHot() {
   if (sideStratEl) updatedParams["side_strategy"] = sideStratEl.value;
   if (reduceOnlyStratEl) updatedParams["reduce_only_strategy"] = reduceOnlyStratEl.value;
   if (execStratEl) updatedParams["execution_strategy"] = execStratEl.value;
+  if (entryTtlEl) updatedParams["entry_ttl_seconds"] = parseInt(entryTtlEl.value, 10) || 10;
   if (bypassEl) updatedParams["bypass_global_guards"] = bypassEl.checked;
   if (disableScaleEl) updatedParams["disable_balance_scaling"] = disableScaleEl.checked;
 
