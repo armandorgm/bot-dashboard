@@ -142,6 +142,8 @@ let buySellValEl: HTMLElement | null = null;
 let sessionPnLValEl: HTMLElement | null = null;
 let unrealizedPnLValEl: HTMLElement | null = null;
 let instanceTotalUnrealizedValEl: HTMLElement | null = null;
+let sessionNetTotalValEl: HTMLElement | null = null;
+let instanceTotalNetValEl: HTMLElement | null = null;
 let pnlRateValEl: HTMLElement | null = null;
 let sessionTimeValEl: HTMLElement | null = null;
 let tradesCountValEl: HTMLElement | null = null;
@@ -1392,6 +1394,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   sessionPnLValEl = document.getElementById("session-pnl-val");
   unrealizedPnLValEl = document.getElementById("unrealized-pnl-val");
   instanceTotalUnrealizedValEl = document.getElementById("instance-total-unrealized-val");
+  sessionNetTotalValEl = document.getElementById("session-net-total-val");
+  instanceTotalNetValEl = document.getElementById("instance-total-net-val");
   pnlRateValEl = document.getElementById("pnl-rate-val");
   sessionTimeValEl = document.getElementById("session-time-val");
   tradesCountValEl = document.getElementById("trades-count-val");
@@ -1963,12 +1967,32 @@ function updatePnLDisplay(currentBid: number, currentAsk: number) {
     unrealizedPnLValEl.className = 'card-price ' + (unrealizedPnL > 0 ? 'pnl-positive' : unrealizedPnL < 0 ? 'pnl-negative' : 'pnl-neutral');
   }
 
+  const totalInstanceUnrealized = sessionMetrics.calculateUnrealizedPnL(currentBid, currentAsk, config.symbol, targetInstId);
+
   if (instanceTotalUnrealizedValEl) {
     // Total Instance Unrealized PnL (all open positions of this instance regardless of session start time)
-    const totalInstanceUnrealized = sessionMetrics.calculateUnrealizedPnL(currentBid, currentAsk, config.symbol, targetInstId);
     const totSign = totalInstanceUnrealized > 0 ? '+' : '';
     instanceTotalUnrealizedValEl.innerText = `$${totSign}${totalInstanceUnrealized.toFixed(4)}`;
     instanceTotalUnrealizedValEl.className = totalInstanceUnrealized > 0 ? 'pnl-positive' : totalInstanceUnrealized < 0 ? 'pnl-negative' : 'pnl-neutral';
+  }
+
+  // Net Total PnL Calculations (Realized + Unrealized)
+  const currentInstDataForNet = loadedInstances.find(i => i.id === targetInstId);
+  const instanceLifetimeRealized = currentInstDataForNet ? (currentInstDataForNet.lifetime_pnl || 0) : realizedPnL;
+  
+  const sessionNetTotal = realizedPnL + unrealizedPnL;
+  const instanceLifetimeNetTotal = instanceLifetimeRealized + totalInstanceUnrealized;
+
+  if (sessionNetTotalValEl) {
+    const netSign = sessionNetTotal > 0 ? '+' : '';
+    sessionNetTotalValEl.innerText = `$${netSign}${sessionNetTotal.toFixed(4)}`;
+    sessionNetTotalValEl.className = 'card-price ' + (sessionNetTotal > 0 ? 'pnl-positive' : sessionNetTotal < 0 ? 'pnl-negative' : 'pnl-neutral');
+  }
+
+  if (instanceTotalNetValEl) {
+    const totNetSign = instanceLifetimeNetTotal > 0 ? '+' : '';
+    instanceTotalNetValEl.innerText = `$${totNetSign}${instanceLifetimeNetTotal.toFixed(4)}`;
+    instanceTotalNetValEl.className = instanceLifetimeNetTotal > 0 ? 'pnl-positive' : instanceLifetimeNetTotal < 0 ? 'pnl-negative' : 'pnl-neutral';
   }
 
   if (pnlRateValEl) {
@@ -2023,6 +2047,8 @@ interface BotInstanceData {
   strategy_type: string;
   allocated_capital: number;
   used_capital?: number;
+  lifetime_pnl?: number;
+  created_at?: string;
   status: string;
   params: Record<string, any>;
 }
@@ -2400,6 +2426,26 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
           ` : `
             <div style="font-size: 10px; color: #475569; font-style: italic;">Sess: N/A</div>
           `}
+        </td>
+        <td style="padding: 14px 16px; text-align: right; background: rgba(59, 130, 246, 0.04);">
+          ${(() => {
+            const lifetimeNet = inst.lifetime_pnl + (inst.unrealized_pnl || 0);
+            const netColor = lifetimeNet > 0 ? '#10b981' : lifetimeNet < 0 ? '#ef4444' : '#9ca3af';
+            const netSign = lifetimeNet > 0 ? '+' : '';
+
+            let sessNetStr = '<div style="font-size: 10px; color: #475569; font-style: italic;">Sess: N/A</div>';
+            if (inst.session_pnl !== undefined && inst.session_pnl !== null && inst.session_unrealized_pnl !== undefined && inst.session_unrealized_pnl !== null) {
+              const sessNet = inst.session_pnl + inst.session_unrealized_pnl;
+              const sColor = sessNet > 0 ? '#10b981' : sessNet < 0 ? '#ef4444' : '#60a5fa';
+              const sSign = sessNet > 0 ? '+' : '';
+              sessNetStr = `<div style="font-size: 11px; color: ${sColor};">Sess: $${sSign}${sessNet.toFixed(4)}</div>`;
+            }
+
+            return `
+              <div style="font-weight: bold; color: ${netColor};">$${netSign}${lifetimeNet.toFixed(4)}</div>
+              ${sessNetStr}
+            `;
+          })()}
         </td>
         <td style="padding: 14px 16px; text-align: right;">
           <div style="font-weight: bold; color: #3b82f6;">${inst.total_trades}</div>

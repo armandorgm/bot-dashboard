@@ -107,6 +107,7 @@
                   <th style="padding: 12px 16px;">ESTADO</th>
                   <th style="padding: 12px 16px; text-align: right;">PnL (LIFETIME / SESSION)</th>
                   <th style="padding: 12px 16px; text-align: right;">UNREALIZED (LIFETIME / SESSION)</th>
+                  <th style="padding: 12px 16px; text-align: right; background: rgba(59, 130, 246, 0.08); color: #60a5fa;">NET TOTAL (LIFETIME / SESSION)</th>
                   <th style="padding: 12px 16px; text-align: right;">TRADES (LIFETIME / SESSION)</th>
                   <th style="padding: 12px 16px; text-align: right;">TRADES/H (LIFETIME / SESSION)</th>
                   <th style="padding: 12px 16px; text-align: right;">WIN RATE</th>
@@ -291,6 +292,34 @@
             <!-- Instance (Secondary) -->
             <div style="display: flex; flex-direction: column; align-items: flex-end;">
               <span id="instance-total-unrealized-val" style="font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; font-weight: 600; line-height: 1;" title="P&L No Realizado Total de la Instancia en Binance">$0.00</span>
+              <span style="font-size: 0.65rem; color: #64748b; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;">Inst. Total</span>
+            </div>
+          </div>
+        </div>
+        <div class="stats-card net-total-pnl-card" style="display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(59, 130, 246, 0.3);">
+          <!-- Header -->
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <span class="card-label" style="display: flex; align-items: center; gap: 6px; color: #60a5fa; font-weight: bold;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #60a5fa;"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              NET TOTAL PnL
+            </span>
+            <span style="font-size: 0.55rem; color: #93c5fd; text-transform: uppercase; letter-spacing: 0.05em; font-family: 'JetBrains Mono', monospace;">Realized+Unrealized</span>
+          </div>
+          
+          <!-- Dual Metric Area -->
+          <div style="display: flex; flex-direction: row; align-items: flex-end; justify-content: space-between; margin-top: 2px;">
+            <!-- Session Net Total (Primary) -->
+            <div style="display: flex; flex-direction: column; align-items: flex-start;">
+              <span class="card-price" id="session-net-total-val" style="font-size: 1.15rem; line-height: 1;">$0.00</span>
+              <span style="font-size: 0.65rem; color: #64748b; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;">Session</span>
+            </div>
+            
+            <!-- Separator -->
+            <div style="width: 1px; height: 26px; background: linear-gradient(to bottom, transparent, rgba(96, 165, 250, 0.3), transparent);"></div>
+            
+            <!-- Instance Lifetime Net Total (Secondary) -->
+            <div style="display: flex; flex-direction: column; align-items: flex-end;">
+              <span id="instance-total-net-val" style="font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; font-weight: 600; line-height: 1;" title="PnL Realizado + No Realizado Total de la Instancia">$0.00</span>
               <span style="font-size: 0.65rem; color: #64748b; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;">Inst. Total</span>
             </div>
           </div>
