@@ -2080,6 +2080,7 @@ function renderInstanceForm(inst: BotInstanceData) {
   const profitEl = document.getElementById("inst-edit-profit-pc") as HTMLInputElement;
   const threshEl = document.getElementById("inst-edit-threshold-pc") as HTMLInputElement;
   const chaseEl = document.getElementById("inst-edit-chase") as HTMLSelectElement;
+  const sideStratEl = document.getElementById("inst-edit-side-strategy") as HTMLSelectElement;
   const bypassEl = document.getElementById("inst-edit-bypass-guards") as HTMLInputElement;
   const disableScaleEl = document.getElementById("inst-edit-disable-scaling") as HTMLInputElement;
 
@@ -2095,6 +2096,7 @@ function renderInstanceForm(inst: BotInstanceData) {
   if (profitEl) profitEl.value = ((params.profit_pc ?? 0.005) * 100).toFixed(3);
   if (threshEl) threshEl.value = ((params.threshold_pc ?? 0.01) * 100).toFixed(3);
   if (chaseEl) chaseEl.value = params.chase_behavior || "flat";
+  if (sideStratEl) sideStratEl.value = params.side_strategy || "ANCHOR_PARITY";
   if (bypassEl) bypassEl.checked = !!params.bypass_global_guards;
   if (disableScaleEl) disableScaleEl.checked = !!params.disable_balance_scaling;
 
@@ -2578,6 +2580,7 @@ function prepareNewInstanceForm() {
       profit_pc: 0.005,
       threshold_pc: 0.01,
       chase_behavior: "flat",
+      side_strategy: "ANCHOR_PARITY",
       bypass_global_guards: false,
       disable_balance_scaling: false
     }
@@ -2603,6 +2606,7 @@ async function saveInstanceConfigHot() {
   const profitEl = document.getElementById("inst-edit-profit-pc") as HTMLInputElement;
   const threshEl = document.getElementById("inst-edit-threshold-pc") as HTMLInputElement;
   const chaseEl = document.getElementById("inst-edit-chase") as HTMLSelectElement;
+  const sideStratEl = document.getElementById("inst-edit-side-strategy") as HTMLSelectElement;
   const bypassEl = document.getElementById("inst-edit-bypass-guards") as HTMLInputElement;
   const disableScaleEl = document.getElementById("inst-edit-disable-scaling") as HTMLInputElement;
 
@@ -2622,6 +2626,7 @@ async function saveInstanceConfigHot() {
   if (profitEl) updatedParams["profit_pc"] = parseFloat(profitEl.value) / 100.0;
   if (threshEl) updatedParams["threshold_pc"] = parseFloat(threshEl.value) / 100.0;
   if (chaseEl) updatedParams["chase_behavior"] = chaseEl.value;
+  if (sideStratEl) updatedParams["side_strategy"] = sideStratEl.value;
   if (bypassEl) updatedParams["bypass_global_guards"] = bypassEl.checked;
   if (disableScaleEl) updatedParams["disable_balance_scaling"] = disableScaleEl.checked;
 
