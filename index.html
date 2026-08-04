@@ -39,11 +39,11 @@
             <input type="number" id="base-amount-input" min="5" step="0.1" value="5.1" style="width: 55px; background: #111827; color: #10b981; border: 1px solid #10b981; border-radius: 4px; padding: 2px 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px; outline: none; text-align: center;" />
             <button id="btn-save-base-amount" style="background: #10b981; color: #000; border: none; border-radius: 4px; padding: 2px 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: bold; cursor: pointer;" title="Guardar valor base en PostgreSQL">SET</button>
           </div>
-          <div class="metric-group" style="display: flex; align-items: center; gap: 4px; background: #111827; padding: 2px 8px; border-radius: 6px; border: 1px solid #3b82f6;">
-            <span style="font-size: 10px; color: #60a5fa; font-weight: bold; font-family: 'JetBrains Mono', monospace;">SIDE CHOSER:</span>
-            <select id="header-global-side-strategy-selector" style="background: transparent; color: #60a5fa; border: none; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: bold; outline: none; cursor: pointer;" title="Cambiar Side Strategy (Choser) de la Instancia Actual">
-              <option value="WEIGHTED_MAJORITY_2IN3" style="background: #1e293b; color: #60a5fa;">WEIGHTED_MAJORITY_2IN3 (Mayoría 2/3)</option>
-              <option value="ANCHOR_PARITY" style="background: #1e293b; color: #94a3b8;">ANCHOR_PARITY (Ancla + Paridad)</option>
+          <div class="metric-group" style="display: flex; align-items: center; gap: 4px; background: #111827; padding: 2px 6px; border-radius: 6px; border: 1px solid #3b82f6; max-width: 220px; overflow: hidden;">
+            <span style="font-size: 10px; color: #60a5fa; font-weight: bold; font-family: 'JetBrains Mono', monospace; flex-shrink: 0;">SIDE:</span>
+            <select id="header-global-side-strategy-selector" style="background: transparent; color: #60a5fa; border: none; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: bold; outline: none; cursor: pointer; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; width: 100%;" title="Cambiar Side Strategy (Choser) de la Instancia Actual">
+              <option value="WEIGHTED_MAJORITY_2IN3" style="background: #1e293b; color: #60a5fa;">WM_2IN3 (Mayoría 2/3)</option>
+              <option value="ANCHOR_PARITY" style="background: #1e293b; color: #94a3b8;">ANCHOR (Ancla+Paridad)</option>
             </select>
           </div>
           <div class="metric-group">
