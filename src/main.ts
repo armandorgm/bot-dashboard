@@ -144,6 +144,8 @@ let unrealizedPnLValEl: HTMLElement | null = null;
 let instanceTotalUnrealizedValEl: HTMLElement | null = null;
 let pnlRateValEl: HTMLElement | null = null;
 let sessionTimeValEl: HTMLElement | null = null;
+let tradesCountValEl: HTMLElement | null = null;
+let tradesRateValEl: HTMLElement | null = null;
 const sessionStartTimeMap = new Map<number, number>();
 
 let canvasEl: HTMLCanvasElement | null = null;
@@ -1392,6 +1394,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   instanceTotalUnrealizedValEl = document.getElementById("instance-total-unrealized-val");
   pnlRateValEl = document.getElementById("pnl-rate-val");
   sessionTimeValEl = document.getElementById("session-time-val");
+  tradesCountValEl = document.getElementById("trades-count-val");
+  tradesRateValEl = document.getElementById("trades-rate-val");
 
   canvasEl = document.getElementById("hft-chart") as HTMLCanvasElement;
   modsListEl = document.getElementById("mods-list");
@@ -1987,6 +1991,26 @@ function updatePnLDisplay(currentBid: number, currentAsk: number) {
       const mins = Math.floor((totalSec % 3600) / 60);
       sessionTimeValEl.innerText = `${hours}h ${mins}m`;
     }
+
+    // Trades count & rate calculations (DRY helper logic)
+    const currentInstData = loadedInstances.find(i => i.id === targetInstId);
+    const totalTradesCount = currentInstData ? (currentInstData as any).total_trades || 0 : completedSessionProcessIds.size;
+    const sessionTradesCount = completedSessionProcessIds.size;
+
+    if (tradesCountValEl) {
+      tradesCountValEl.innerText = `${sessionTradesCount} / ${totalTradesCount}`;
+    }
+
+    if (tradesRateValEl) {
+      const sessTradesPerHour = sessionTradesCount / elapsedHours;
+      // Estimate total instance uptime assuming instance created_at or lifetime
+      const instCreatedTs = currentInstData && (currentInstData as any).created_at ? new Date((currentInstData as any).created_at).getTime() : startTimeMs;
+      const rawTotalElapsedMs = Date.now() - instCreatedTs;
+      const totalElapsedHours = Math.max(0.0166, (rawTotalElapsedMs > 0 ? rawTotalElapsedMs : elapsedMs) / (1000 * 3600));
+      const totalTradesPerHour = totalTradesCount / totalElapsedHours;
+
+      tradesRateValEl.innerText = `${sessTradesPerHour.toFixed(1)} / ${totalTradesPerHour.toFixed(1)}`;
+    }
   }
 }
 
@@ -2246,6 +2270,8 @@ interface GlobalOverviewResponse {
     unrealized_pnl?: number;
     session_unrealized_pnl?: number | null;
     total_trades: number;
+    session_trades?: number | null;
+    session_start_time?: string | null;
     winning_trades: number;
     win_rate_pc: number;
     traded_volume: number;
@@ -2375,8 +2401,34 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
             <div style="font-size: 10px; color: #475569; font-style: italic;">Sess: N/A</div>
           `}
         </td>
-        <td style="padding: 14px 16px; text-align: right; font-weight: bold; color: #3b82f6;">
-          ${inst.total_trades}
+        <td style="padding: 14px 16px; text-align: right;">
+          <div style="font-weight: bold; color: #3b82f6;">${inst.total_trades}</div>
+          ${inst.session_trades !== undefined && inst.session_trades !== null ? `
+            <div style="font-size: 11px; color: #94a3b8;">Sess: ${inst.session_trades}</div>
+          ` : `
+            <div style="font-size: 10px; color: #475569; font-style: italic;">Sess: N/A</div>
+          `}
+        </td>
+        <td style="padding: 14px 16px; text-align: right;">
+          ${(() => {
+            const instCreatedTs = inst.created_at ? new Date(inst.created_at).getTime() : Date.now();
+            const totalElapsedHours = Math.max(0.0166, (Date.now() - instCreatedTs) / (1000 * 3600));
+            const totalTradesPerHour = (inst.total_trades / totalElapsedHours).toFixed(1);
+
+            let sessionTradesPerHour = "N/A";
+            if (inst.session_trades !== undefined && inst.session_trades !== null && inst.session_start_time) {
+              const sessStartTs = new Date(inst.session_start_time).getTime();
+              const sessElapsedHours = Math.max(0.0166, (Date.now() - sessStartTs) / (1000 * 3600));
+              sessionTradesPerHour = (inst.session_trades / sessElapsedHours).toFixed(1);
+            }
+
+            return `
+              <div style="font-weight: bold; color: #8b5cf6;">${totalTradesPerHour} /h</div>
+              <div style="font-size: 11px; color: ${sessionTradesPerHour !== "N/A" ? "#c084fc" : "#475569"};">
+                ${sessionTradesPerHour !== "N/A" ? `Sess: ${sessionTradesPerHour} /h` : "Sess: N/A"}
+              </div>
+            `;
+          })()}
         </td>
         <td style="padding: 14px 16px; text-align: right; font-weight: bold; color: #f59e0b;">
           ${inst.win_rate_pc.toFixed(2)}%
