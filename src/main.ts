@@ -2131,7 +2131,7 @@ function renderInstanceForm(inst: BotInstanceData) {
   if (chaseEl) chaseEl.value = params.chase_behavior || "flat";
   if (sideStratEl) sideStratEl.value = params.side_strategy || "WEIGHTED_MAJORITY_2IN3";
   if (reduceOnlyStratEl) reduceOnlyStratEl.value = params.reduce_only_strategy || "NEVER";
-  if (execStratEl) execStratEl.value = params.execution_strategy || "CHASE_V2";
+  if (execStratEl) execStratEl.value = params.execution_strategy || "STATIC_LIMIT";
   if (bypassEl) bypassEl.checked = !!params.bypass_global_guards;
   if (disableScaleEl) disableScaleEl.checked = !!params.disable_balance_scaling;
 
@@ -2621,7 +2621,7 @@ function prepareNewInstanceForm() {
       chase_behavior: "flat",
       side_strategy: "WEIGHTED_MAJORITY_2IN3",
       reduce_only_strategy: "NEVER",
-      execution_strategy: "CHASE_V2",
+      execution_strategy: "STATIC_LIMIT",
       bypass_global_guards: false,
       disable_balance_scaling: false
     }
