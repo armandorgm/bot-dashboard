@@ -43,6 +43,7 @@
             <span style="font-size: 10px; color: #60a5fa; font-weight: bold; font-family: 'JetBrains Mono', monospace; flex-shrink: 0;">SIDE:</span>
             <select id="header-global-side-strategy-selector" style="background: transparent; color: #60a5fa; border: none; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: bold; outline: none; cursor: pointer; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; width: 100%;" title="Cambiar Side Strategy (Choser) de la Instancia Actual">
               <option value="WEIGHTED_MAJORITY_2IN3" style="background: #1e293b; color: #60a5fa;">WM_2IN3 (Mayoría 2/3)</option>
+              <option value="POSITION_CONTRACTS_BIAS" style="background: #1e293b; color: #e3b341;">POS_BIAS (Sesgo por Contratos)</option>
               <option value="ANCHOR_PARITY" style="background: #1e293b; color: #94a3b8;">ANCHOR (Ancla+Paridad)</option>
             </select>
           </div>
@@ -236,6 +237,7 @@
                     <label style="display: block; color: #58a6ff; font-size: 11px; font-weight: bold; margin-bottom: 4px;">ESTRATEGIA DE LADO (ENTRY SIDE)</label>
                     <select id="inst-edit-side-strategy" style="width: 100%; background: #0d1117; color: #58a6ff; border: 1px solid #388bfd; border-radius: 4px; padding: 6px; font-family: inherit; font-size: 12px; font-weight: bold;">
                       <option value="WEIGHTED_MAJORITY_2IN3">WEIGHTED_MAJORITY_2IN3 (Mayoría Abierta 2 de 3 - Default)</option>
+                      <option value="POSITION_CONTRACTS_BIAS">POSITION_CONTRACTS_BIAS (Sesgo por Contratos en Posición)</option>
                       <option value="ANCHOR_PARITY">ANCHOR_PARITY (Precio Ancla + Paridad ID)</option>
                     </select>
                   </div>
