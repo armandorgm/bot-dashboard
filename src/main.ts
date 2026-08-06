@@ -2232,13 +2232,6 @@ function switchActiveInstance(instanceId: string | number) {
     headerSelector.style.color = getInstanceStatusColor(target.status);
   }
 
-  // Actualizar selector de Side Strategy (Side Choser) en el Header
-  const sideChoserHeader = document.getElementById("header-global-side-strategy-selector") as HTMLSelectElement | null;
-  if (sideChoserHeader && target.params) {
-    const currentSideStrategy = target.params.side_strategy || "WEIGHTED_MAJORITY_2IN3";
-    sideChoserHeader.value = currentSideStrategy;
-  }
-
   // Limpiar estado visual anterior
   history = [];
   hftEvents = [];
@@ -2744,44 +2737,7 @@ function initInstanceModalListeners() {
   const selectDropdown = document.getElementById("instance-select-dropdown") as HTMLSelectElement;
   const headerSelector = document.getElementById("header-instance-selector") as HTMLSelectElement;
 
-  const sideChoserHeader = document.getElementById("header-global-side-strategy-selector") as HTMLSelectElement | null;
 
-  if (sideChoserHeader) {
-    sideChoserHeader.addEventListener("change", async () => {
-      const activeInst = loadedInstances.find(i => String(i.id) === String(selectedInstanceId || config.instance_id));
-      if (!activeInst) return;
-
-      const newStrategy = sideChoserHeader.value;
-      const updatedParams = { ...(activeInst.params || {}), side_strategy: newStrategy };
-
-      const payload = {
-        name: activeInst.name,
-        symbol: activeInst.symbol,
-        strategy_type: activeInst.strategy_type,
-        status: activeInst.status,
-        allocated_capital: activeInst.allocated_capital,
-        params: updatedParams
-      };
-
-      try {
-        const parentPort = config?.parent_api_port || "8000";
-        const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${activeInst.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-
-        if (res.ok) {
-          activeInst.params = updatedParams;
-          addLog(`[SIDE CHOSER] Estrategia de lado cambiada en caliente a ${newStrategy} para Instancia #${activeInst.id}`, "success");
-        } else {
-          addLog(`[SIDE CHOSER] Error guardando estrategia de lado (HTTP ${res.status})`, "err");
-        }
-      } catch (err: any) {
-        addLog(`[SIDE CHOSER] Fallo al cambiar estrategia de lado: ${err.message}`, "err");
-      }
-    });
-  }
 
   if (headerSelector) {
     headerSelector.addEventListener("change", () => {
