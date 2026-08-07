@@ -2118,6 +2118,7 @@ function renderInstanceForm(inst: BotInstanceData) {
   const bypassEl = document.getElementById("inst-edit-bypass-guards") as HTMLInputElement;
   const disableScaleEl = document.getElementById("inst-edit-disable-scaling") as HTMLInputElement;
   const dprMarketSwitchEl = document.getElementById("inst-edit-dpr-market-switch") as HTMLInputElement;
+  const enableShadowLedgerEl = document.getElementById("inst-edit-enable-shadow-ledger") as HTMLInputElement;
 
   const rawJsonEl = document.getElementById("inst-edit-raw-json") as HTMLTextAreaElement;
 
@@ -2138,6 +2139,7 @@ function renderInstanceForm(inst: BotInstanceData) {
   if (bypassEl) bypassEl.checked = !!params.bypass_global_guards;
   if (disableScaleEl) disableScaleEl.checked = !!params.disable_balance_scaling;
   if (dprMarketSwitchEl) dprMarketSwitchEl.checked = params.dpr_force_market_on_entry ?? true;
+  if (enableShadowLedgerEl) enableShadowLedgerEl.checked = !!params.enable_shadow_ledger;
 
   if (rawJsonEl) rawJsonEl.value = JSON.stringify(params, null, 2);
 }
@@ -2652,6 +2654,7 @@ async function saveInstanceConfigHot() {
   const bypassEl = document.getElementById("inst-edit-bypass-guards") as HTMLInputElement;
   const disableScaleEl = document.getElementById("inst-edit-disable-scaling") as HTMLInputElement;
   const dprMarketSwitchEl = document.getElementById("inst-edit-dpr-market-switch") as HTMLInputElement;
+  const enableShadowLedgerEl = document.getElementById("inst-edit-enable-shadow-ledger") as HTMLInputElement;
 
   const rawJsonEl = document.getElementById("inst-edit-raw-json") as HTMLTextAreaElement;
 
@@ -2676,6 +2679,7 @@ async function saveInstanceConfigHot() {
   if (bypassEl) updatedParams["bypass_global_guards"] = bypassEl.checked;
   if (disableScaleEl) updatedParams["disable_balance_scaling"] = disableScaleEl.checked;
   if (dprMarketSwitchEl) updatedParams["dpr_force_market_on_entry"] = dprMarketSwitchEl.checked;
+  if (enableShadowLedgerEl) updatedParams["enable_shadow_ledger"] = enableShadowLedgerEl.checked;
 
 
   const payload = {
