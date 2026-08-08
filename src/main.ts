@@ -1483,6 +1483,78 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  // ── CYCLE SPEED (interval_seconds) Config Handling ────────────────────────
+  const cycleSpeedInput = document.getElementById("cycle-speed-input") as HTMLInputElement;
+  const btnSetCycleSpeed = document.getElementById("btn-set-cycle-speed") as HTMLButtonElement;
+
+  async function loadCycleSpeedForInstance(instanceId: number): Promise<void> {
+    if (!cycleSpeedInput) return;
+    const inst = loadedInstances.find(i => i.id === instanceId);
+    if (inst) {
+      const interval = inst.params?.interval_seconds ?? 10;
+      cycleSpeedInput.value = String(interval);
+    }
+  }
+
+  async function setCycleSpeed(): Promise<void> {
+    const parentPort = config?.parent_api_port || "8000";
+    const currentInstId = selectedInstanceId || parseInt(config.instance_id || "1", 10);
+    const val = parseFloat(cycleSpeedInput?.value || "10");
+
+    if (isNaN(val) || val < 0.5 || val > 300) {
+      addLog("[CYCLE SPEED ERROR] Valor fuera de rango (0.5s - 300s)", "warn");
+      return;
+    }
+
+    try {
+      if (btnSetCycleSpeed) {
+        btnSetCycleSpeed.disabled = true;
+        btnSetCycleSpeed.textContent = "...";
+      }
+      addLog(`[CYCLE SPEED] Aplicando intervalo ${val}s a Instancia #${currentInstId}...`, "info");
+      const res = await fetch(
+        `http://127.0.0.1:${parentPort}/api/grid/instances/${currentInstId}/cycle-speed`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ interval_seconds: val })
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        addLog(
+          `[CYCLE SPEED ✓] ${data.previous_interval_seconds}s → ${val}s — Instancia #${currentInstId} (efectivo en próximo ciclo)`,
+          "info"
+        );
+        // Refresh local instance data to keep in-memory state consistent
+        const updatedInst = loadedInstances.find(i => i.id === currentInstId);
+        if (updatedInst) {
+          updatedInst.params = { ...updatedInst.params, interval_seconds: val };
+        }
+      } else {
+        const errorText = await res.text();
+        addLog(`[CYCLE SPEED ERROR] HTTP ${res.status}: ${errorText}`, "err");
+      }
+    } catch (err: any) {
+      addLog(`[CYCLE SPEED ERROR] ${err?.message ?? err}`, "err");
+    } finally {
+      if (btnSetCycleSpeed) {
+        btnSetCycleSpeed.disabled = false;
+        btnSetCycleSpeed.textContent = "SET";
+      }
+    }
+  }
+
+  if (cycleSpeedInput && btnSetCycleSpeed) {
+    btnSetCycleSpeed.addEventListener("click", setCycleSpeed);
+    cycleSpeedInput.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter") setCycleSpeed();
+    });
+  }
+
+  // Expose loadCycleSpeedForInstance so it can be called from instance selector handlers
+  (window as any)._loadCycleSpeedForInstance = loadCycleSpeedForInstance;
+
   if (canvasEl) {
     // ── Mouse hover tracking for Tooltip ────────────────────────────────────
 
@@ -2244,6 +2316,11 @@ function switchActiveInstance(instanceId: string | number) {
 
   // Reconectar WebSocket público directo de Binance para los ticks del gráfico del nuevo símbolo
   connectBinancePublicWs(target.symbol);
+
+  // Actualizar el input CYCLE(s) con el valor de la instancia seleccionada
+  if (typeof (window as any)._loadCycleSpeedForInstance === "function") {
+    (window as any)._loadCycleSpeedForInstance(target.id);
+  }
 
   // Volver a consultar APIs REST para la nueva instancia seleccionada
   fetchOpenOrders();

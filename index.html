@@ -39,8 +39,13 @@
             <input type="number" id="base-amount-input" min="5" step="0.1" value="5.1" style="width: 55px; background: #111827; color: #10b981; border: 1px solid #10b981; border-radius: 4px; padding: 2px 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px; outline: none; text-align: center;" />
             <button id="btn-save-base-amount" style="background: #10b981; color: #000; border: none; border-radius: 4px; padding: 2px 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: bold; cursor: pointer;" title="Guardar valor base en PostgreSQL">SET</button>
           </div>
+          <div class="metric-group" style="display: flex; align-items: center; gap: 4px;">
+            <span class="metric-label" style="color: #f59e0b;">CYCLE (s):</span>
+            <input type="number" id="cycle-speed-input" min="0.5" max="300" step="0.5" value="10" style="width: 52px; background: #111827; color: #f59e0b; border: 1px solid #f59e0b; border-radius: 4px; padding: 2px 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px; outline: none; text-align: center;" title="Velocidad del run_cycle en segundos (0.5s - 300s)" />
+            <button id="btn-set-cycle-speed" style="background: #f59e0b; color: #000; border: none; border-radius: 4px; padding: 2px 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: bold; cursor: pointer;" title="Aplicar velocidad de ciclo en caliente">SET</button>
+          </div>
           <div class="metric-group">
-            <button id="btn-open-instance-config" style="background: #6366f1; color: #ffffff; border: none; border-radius: 4px; padding: 4px 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; items-center; gap: 4px;" title="Configuración de Instancia en Caliente">⚙️ INSTANCIAS</button>
+            <button id="btn-open-instance-config" style="background: #6366f1; color: #ffffff; border: none; border-radius: 4px; padding: 4px 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;" title="Configuración de Instancia en Caliente">⚙️ INSTANCIAS</button>
           </div>
         </div>
       </header>
