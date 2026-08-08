@@ -173,110 +173,166 @@
             </div>
 
             <!-- Form Content -->
-            <div id="instance-form-container" style="display: flex; flex-direction: column; gap: 16px;">
-              <!-- Basic Attributes -->
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; background: #161b22; padding: 16px; border-radius: 8px; border: 1px solid #21262d;">
-                <div>
-                  <label style="display: block; color: #8b949e; font-size: 11px; margin-bottom: 4px;">NOMBRE INSTANCIA</label>
-                  <input type="text" id="inst-edit-name" style="width: 100%; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 6px; font-family: inherit; font-size: 12px;" />
+            <div id="instance-form-container" style="display: flex; flex-direction: column; gap: 16px; font-family: 'JetBrains Mono', monospace;">
+              
+              <!-- BLOQUE 1: Identidad & Capital -->
+              <div style="background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #21262d; padding-bottom: 8px; margin-bottom: 2px;">
+                  <span style="font-size: 13px;">🆔</span>
+                  <h4 style="margin: 0; color: #58a6ff; font-size: 12px; font-weight: bold; text-transform: uppercase; tracking: 0.05em;">Bloque 1: Identidad & Capital</h4>
                 </div>
-                <div>
-                  <label style="display: block; color: #8b949e; font-size: 11px; margin-bottom: 4px;">SÍMBOLO</label>
-                  <input type="text" id="inst-edit-symbol" style="width: 100%; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 6px; font-family: inherit; font-size: 12px;" />
-                </div>
-                <div>
-                  <label style="display: block; color: #8b949e; font-size: 11px; margin-bottom: 4px;">ESTRATEGIA</label>
-                  <select id="inst-edit-strategy" style="width: 100%; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 6px; font-family: inherit; font-size: 12px;">
-                    <option value="GRID">GRID</option>
-                    <option value="SCALER">SCALER</option>
-                    <option value="REACTOR">REACTOR</option>
-                  </select>
-                </div>
-                <div>
-                  <label style="display: block; color: #8b949e; font-size: 11px; margin-bottom: 4px;">ESTADO</label>
-                  <select id="inst-edit-status" style="width: 100%; background: #0d1117; color: #3fb950; border: 1px solid #30363d; border-radius: 4px; padding: 6px; font-family: inherit; font-size: 12px; font-weight: bold;">
-                    <option value="ACTIVE">ACTIVE</option>
-                    <option value="PAUSED">PAUSED</option>
-                    <option value="STOPPED">STOPPED</option>
-                  </select>
-                </div>
-                <div>
-                  <label style="display: block; color: #8b949e; font-size: 11px; margin-bottom: 4px;">CAPITAL ASIGNADO (USDC)</label>
-                  <input type="number" step="1" id="inst-edit-capital" style="width: 100%; background: #0d1117; color: #58a6ff; border: 1px solid #30363d; border-radius: 4px; padding: 6px; font-family: inherit; font-size: 12px; font-weight: bold;" />
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px;">
+                  <div>
+                    <label style="display: block; color: #8b949e; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Nombre identificador de la instancia del bot">NOMBRE INSTANCIA</label>
+                    <input type="text" id="inst-edit-name" style="width: 100%; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; box-sizing: border-box;" />
+                  </div>
+                  <div>
+                    <label style="display: block; color: #8b949e; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Símbolo del par de trading de binance (ej. 1000PEPEUSDC)">SÍMBOLO</label>
+                    <input type="text" id="inst-edit-symbol" style="width: 100%; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; box-sizing: border-box;" />
+                  </div>
+                  <div>
+                    <label style="display: block; color: #8b949e; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Tipo de arquitectura del bot">ESTRATEGIA TIPO</label>
+                    <select id="inst-edit-strategy" style="width: 100%; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; box-sizing: border-box; cursor: pointer;">
+                      <option value="GRID">GRID</option>
+                      <option value="SCALER">SCALER</option>
+                      <option value="REACTOR">REACTOR</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style="display: block; color: #8b949e; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Estado operativo de la instancia">ESTADO</label>
+                    <select id="inst-edit-status" style="width: 100%; background: #0d1117; color: #3fb950; border: 1px solid #30363d; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; font-weight: bold; box-sizing: border-box; cursor: pointer;">
+                      <option value="ACTIVE">ACTIVE</option>
+                      <option value="PAUSED">PAUSED</option>
+                      <option value="STOPPED">STOPPED</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style="display: block; color: #58a6ff; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Capital máximo asignado en USDC">CAPITAL ASIGNADO (USDC)</label>
+                    <input type="number" step="1" id="inst-edit-capital" style="width: 100%; background: #0d1117; color: #58a6ff; border: 1px solid #30363d; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; font-weight: bold; box-sizing: border-box;" />
+                  </div>
                 </div>
               </div>
 
-              <!-- Trading Parameters (params JSON) -->
-              <div style="background: #161b22; padding: 16px; border-radius: 8px; border: 1px solid #21262d; display: flex; flex-direction: column; gap: 12px;">
-                <h4 style="margin: 0; color: #58a6ff; font-size: 13px; font-weight: bold;">⚙️ Parámetros de Trading (`params`)</h4>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+              <!-- BLOQUE 2: Umbrales & Objetivos -->
+              <div style="background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #21262d; padding-bottom: 8px; margin-bottom: 2px;">
+                  <span style="font-size: 13px;">🎯</span>
+                  <h4 style="margin: 0; color: #58a6ff; font-size: 12px; font-weight: bold; text-transform: uppercase; tracking: 0.05em;">Bloque 2: Umbrales & Objetivos</h4>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
                   <div>
-                    <label style="display: block; color: #8b949e; font-size: 11px; margin-bottom: 4px;">TARGET PROFIT (%)</label>
-                    <input type="number" step="0.01" id="inst-edit-profit-pc" style="width: 100%; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 6px; font-family: inherit; font-size: 12px;" />
+                    <label style="display: block; color: #8b949e; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Porcentaje de ganancia objetivo para el Take Profit (TP)">TARGET PROFIT (%)</label>
+                    <input type="number" step="0.01" id="inst-edit-profit-pc" style="width: 100%; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; box-sizing: border-box;" />
                   </div>
                   <div>
-                    <label style="display: block; color: #8b949e; font-size: 11px; margin-bottom: 4px;">GRID THRESHOLD (%)</label>
-                    <input type="number" step="0.01" id="inst-edit-threshold-pc" style="width: 100%; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 6px; font-family: inherit; font-size: 12px;" />
+                    <label style="display: block; color: #8b949e; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Umbral de desvío/gap % para disparar reordenamiento">GRID THRESHOLD (%)</label>
+                    <input type="number" step="0.01" id="inst-edit-threshold-pc" style="width: 100%; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; box-sizing: border-box;" />
                   </div>
                   <div>
-                    <label style="display: block; color: #8b949e; font-size: 11px; margin-bottom: 4px;">CHASE BEHAVIOR</label>
-                    <select id="inst-edit-chase" style="width: 100%; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 6px; font-family: inherit; font-size: 12px;">
+                    <label style="display: block; color: #8b949e; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Algoritmo de persecución/distanciamiento">CHASE BEHAVIOR</label>
+                    <select id="inst-edit-chase" style="width: 100%; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; box-sizing: border-box; cursor: pointer;">
                       <option value="flat">flat</option>
                       <option value="fibonacci">fibonacci</option>
                     </select>
                   </div>
                   <div>
-                    <label style="display: block; color: #58a6ff; font-size: 11px; font-weight: bold; margin-bottom: 4px;">ESTRATEGIA DE LADO (ENTRY SIDE)</label>
-                    <select id="inst-edit-side-strategy" style="width: 100%; background: #0d1117; color: #58a6ff; border: 1px solid #388bfd; border-radius: 4px; padding: 6px; font-family: inherit; font-size: 12px; font-weight: bold;">
-                      <option value="WEIGHTED_MAJORITY_2IN3">WEIGHTED_MAJORITY_2IN3 (Mayoría Abierta 2 de 3 - Default)</option>
-                      <option value="POSITION_CONTRACTS_BIAS">POSITION_CONTRACTS_BIAS (Sesgo por Contratos en Posición)</option>
+                    <label style="display: block; color: #58a6ff; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Estrategia para seleccionar el lado de entrada (LONG/SHORT)">ESTRATEGIA LADO (SIDE)</label>
+                    <select id="inst-edit-side-strategy" style="width: 100%; background: #0d1117; color: #58a6ff; border: 1px solid #388bfd; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; font-weight: bold; box-sizing: border-box; cursor: pointer;">
+                      <option value="WEIGHTED_MAJORITY_2IN3">WEIGHTED_MAJORITY_2IN3 (Mayoría Abierta 2/3)</option>
+                      <option value="POSITION_CONTRACTS_BIAS">POSITION_CONTRACTS_BIAS (Sesgo por Contratos)</option>
                       <option value="ANCHOR_PARITY">ANCHOR_PARITY (Precio Ancla + Paridad ID)</option>
                     </select>
                   </div>
-                  <div>
-                    <label style="display: block; color: #e3b341; font-size: 11px; font-weight: bold; margin-bottom: 4px;">ESTRATEGIA REDUCEONLY</label>
-                    <select id="inst-edit-reduce-only-strategy" style="width: 100%; background: #0d1117; color: #e3b341; border: 1px solid #d29922; border-radius: 4px; padding: 6px; font-family: inherit; font-size: 12px; font-weight: bold;">
-                      <option value="NEVER">NEVER (Jamás reduceOnly - Default)</option>
-                      <option value="DYNAMIC_POSITION_REDUCE">DYNAMIC_POSITION_REDUCE (Dinámico según Posición)</option>
-                      <option value="ALWAYS">ALWAYS (Siempre reduceOnly)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style="display: block; color: #a371f7; font-size: 11px; font-weight: bold; margin-bottom: 4px;">ESTRATEGIA DE EJECUCIÓN</label>
-                    <select id="inst-edit-execution-strategy" style="width: 100%; background: #0d1117; color: #a371f7; border: 1px solid #8957e5; border-radius: 4px; padding: 6px; font-family: inherit; font-size: 12px; font-weight: bold;">
-                      <option value="STATIC_LIMIT">STATIC_LIMIT (Orden Límite Estática GTX - Default)</option>
-                      <option value="CHASE_V2">CHASE_V2 (Persecución Reactiva Maker)</option>
-                      <option value="MARKET_DIRECT">MARKET_DIRECT (Ejecución Directa Mercado Taker)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style="display: block; color: #f43f5e; font-size: 11px; font-weight: bold; margin-bottom: 4px;">ENTRY TTL (SEGUNDOS)</label>
-                    <input type="number" step="1" min="1" max="300" id="inst-edit-entry-ttl" style="width: 100%; background: #0d1117; color: #f43f5e; border: 1px solid #e11d48; border-radius: 4px; padding: 6px; font-family: inherit; font-size: 12px; font-weight: bold;" value="10" />
-                  </div>
-                </div>
-
-
-                <div style="display: flex; gap: 16px; margin-top: 4px; flex-wrap: wrap;">
-                  <label style="display: flex; align-items: center; gap: 6px; color: #38bdf8; font-size: 11px; font-weight: bold; cursor: pointer;">
-                    <input type="checkbox" id="inst-edit-dpr-market-switch" checked /> Conmutar Entrada ReduceOnly a Market/Taker
-                  </label>
-                  <label style="display: flex; align-items: center; gap: 6px; color: #f59e0b; font-size: 11px; font-weight: bold; cursor: pointer;">
-                    <input type="checkbox" id="inst-edit-enable-shadow-ledger" /> Habilitar Shadow Ledger (Control Cuotas RAM)
-                  </label>
-                  <label style="display: flex; align-items: center; gap: 6px; color: #c9d1d9; font-size: 11px; cursor: pointer;">
-                    <input type="checkbox" id="inst-edit-bypass-guards" /> Bypass Global Guards
-                  </label>
-                  <label style="display: flex; align-items: center; gap: 6px; color: #c9d1d9; font-size: 11px; cursor: pointer;">
-                    <input type="checkbox" id="inst-edit-disable-scaling" /> Desactivar Escalado Balance
-                  </label>
                 </div>
               </div>
 
-              <!-- Raw JSON Editor expander -->
-              <details style="background: #161b22; padding: 12px; border-radius: 8px; border: 1px solid #21262d;">
-                <summary style="color: #8b949e; font-size: 11px; font-weight: bold; cursor: pointer;">🔍 Editor JSON Avanzado de Parámetros (`params` completo)</summary>
-                <textarea id="inst-edit-raw-json" rows="6" style="width: 100%; margin-top: 8px; background: #0d1117; color: #7ee787; border: 1px solid #30363d; border-radius: 4px; padding: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; resize: vertical;"></textarea>
-              </details>
+              <!-- BLOQUE 3: Estrategia de Ejecución & Políticas de Reducción (CONTENEDOR PRINCIPAL) -->
+              <div style="background: #161b22; border: 1px solid #388bfd; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 14px; box-shadow: inset 0 0 10px rgba(56, 139, 253, 0.05);">
+                <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #30363d; padding-bottom: 10px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 14px;">⚡</span>
+                    <h4 style="margin: 0; color: #a371f7; font-size: 13px; font-weight: bold; text-transform: uppercase; tracking: 0.05em;">Bloque 3: Ejecución y Políticas de Reducción</h4>
+                  </div>
+                  <span style="font-size: 10px; color: #8b949e; background: #0d1117; border: 1px solid #30363d; padding: 2px 6px; border-radius: 4px;">JERARQUÍA MAESTRA</span>
+                </div>
+
+                <!-- Selector Jerárquico Superior: Estrategia de Ejecución -->
+                <div style="background: #0d1117; border: 1px solid #8957e5; border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <label style="color: #a371f7; font-size: 11px; font-weight: bold;" title="Determina CÓMO se coloca/persigue la orden en el mercado">ESTRATEGIA DE EJECUCIÓN (CONTENEDOR SUPERIOR)</label>
+                    <span style="font-size: 9px; color: #8957e5; font-weight: bold;">[JERARQUÍA NIVEL 1]</span>
+                  </div>
+                  <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
+                    <div>
+                      <select id="inst-edit-execution-strategy" style="width: 100%; background: #161b22; color: #a371f7; border: 1px solid #8957e5; border-radius: 4px; padding: 8px; font-family: inherit; font-size: 12px; font-weight: bold; box-sizing: border-box; cursor: pointer;">
+                        <option value="STATIC_LIMIT">STATIC_LIMIT (Orden Límite Estática GTX - Default)</option>
+                        <option value="CHASE_V2">CHASE_V2 (Persecución Reactiva Maker / Post-Only)</option>
+                        <option value="MARKET_DIRECT">MARKET_DIRECT (Ejecución Directa Mercado Taker)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <div style="display: flex; align-items: center; gap: 6px; height: 100%;">
+                        <span style="color: #8b949e; font-size: 10px; font-weight: bold; white-space: nowrap;">TTL (s):</span>
+                        <input type="number" step="1" min="1" max="300" id="inst-edit-entry-ttl" style="width: 100%; background: #161b22; color: #f43f5e; border: 1px solid #e11d48; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; font-weight: bold; box-sizing: border-box;" value="10" title="Tiempo de vida en segundos de la orden de entrada" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Sub-configuración Anidada: Políticas de Reduce-Only & Rescate -->
+                <div style="margin-left: 16px; padding-left: 14px; border-left: 2px solid #8957e5; display: flex; flex-direction: column; gap: 12px; background: rgba(137, 87, 229, 0.03); padding-top: 10px; padding-bottom: 10px; padding-right: 10px; border-radius: 0 6px 6px 0;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 10px; color: #e3b341; font-weight: bold;">⤷ SUB-CONFIGURACIÓN DEPENDIENTE DE EJECUCIÓN</span>
+                    <span style="font-size: 9px; color: #d29922; font-weight: bold;">[JERARQUÍA NIVEL 2]</span>
+                  </div>
+
+                  <div>
+                    <label style="display: block; color: #e3b341; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Determina si la orden lleva el flag reduceOnly=True">POLÍTICA REDUCE-ONLY (`reduce_only_strategy`)</label>
+                    <select id="inst-edit-reduce-only-strategy" style="width: 100%; background: #0d1117; color: #e3b341; border: 1px solid #d29922; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; font-weight: bold; box-sizing: border-box; cursor: pointer;">
+                      <option value="NEVER">NEVER (Jamás reduceOnly - Default)</option>
+                      <option value="DYNAMIC_POSITION_REDUCE">DYNAMIC_POSITION_REDUCE (Dinámico según Posición Previa)</option>
+                      <option value="ALWAYS">ALWAYS (Siempre reduceOnly)</option>
+                    </select>
+                  </div>
+
+                  <div style="background: #0d1117; padding: 8px 10px; border-radius: 4px; border: 1px dashed #30363d;">
+                    <label style="display: flex; align-items: center; gap: 8px; color: #38bdf8; font-size: 11px; font-weight: bold; cursor: pointer; user-select: none;">
+                      <input type="checkbox" id="inst-edit-dpr-market-switch" checked style="accent-color: #0284c7; cursor: pointer;" />
+                      <span>Conmutar Entrada ReduceOnly a Market/Taker (`dpr_force_market_on_entry`)</span>
+                    </label>
+                    <p style="margin: 4px 0 0 24px; font-size: 10px; color: #8b949e; line-height: 1.3;">
+                      Rescate automático Taker si la orden Reduce-Only de entrada es antinatural en Binance.
+                    </p>
+                  </div>
+                </div>
+
+              </div>
+
+              <!-- BLOQUE 4: Guardias & Opciones Avanzadas / Raw JSON -->
+              <div style="background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #21262d; padding-bottom: 8px;">
+                  <span style="font-size: 13px;">🛡️</span>
+                  <h4 style="margin: 0; color: #58a6ff; font-size: 12px; font-weight: bold; text-transform: uppercase; tracking: 0.05em;">Bloque 4: Guardias & Opciones Avanzadas</h4>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; background: #0d1117; padding: 10px; border-radius: 6px; border: 1px solid #30363d;">
+                  <label style="display: flex; align-items: center; gap: 6px; color: #f59e0b; font-size: 11px; font-weight: bold; cursor: pointer;">
+                    <input type="checkbox" id="inst-edit-enable-shadow-ledger" style="accent-color: #d97706; cursor: pointer;" /> Shadow Ledger (RAM Quota)
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 6px; color: #c9d1d9; font-size: 11px; cursor: pointer;">
+                    <input type="checkbox" id="inst-edit-bypass-guards" style="cursor: pointer;" /> Bypass Global Guards
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 6px; color: #c9d1d9; font-size: 11px; cursor: pointer;">
+                    <input type="checkbox" id="inst-edit-disable-scaling" style="cursor: pointer;" /> Desactivar Escalado Balance
+                  </label>
+                </div>
+
+                <details style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px;">
+                  <summary style="color: #8b949e; font-size: 11px; font-weight: bold; cursor: pointer; user-select: none;">🔍 Editor JSON Avanzado de Parámetros (`params` completo)</summary>
+                  <textarea id="inst-edit-raw-json" rows="6" style="width: 100%; margin-top: 8px; background: #161b22; color: #7ee787; border: 1px solid #30363d; border-radius: 4px; padding: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; resize: vertical; box-sizing: border-box; outline: none;"></textarea>
+                </details>
+              </div>
+
             </div>
           </div>
 
