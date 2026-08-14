@@ -2156,6 +2156,408 @@ interface BotInstanceData {
   params: Record<string, any>;
 }
 
+interface StrategyManifestItem {
+  class?: string;
+  modularity: 'SEALED' | 'COMPOSABLE' | string;
+  allowed_slots: string[];
+  allowed_types?: Record<string, string[]>;
+  description?: string;
+}
+
+interface StrategiesManifest {
+  description?: string;
+  definitions?: {
+    modularity_modes: string[];
+  };
+  strategies: Record<string, StrategyManifestItem>;
+}
+
+const DEFAULT_STRATEGIES_MANIFEST: StrategiesManifest = {
+  description: "Registry defining modularity rules, component slots, and encapsulation contracts for strategies in StrategyFactory.",
+  definitions: {
+    modularity_modes: ["SEALED", "COMPOSABLE"]
+  },
+  strategies: {
+    "GRID_POSITION_FLIPPER": {
+      class: "GridPositionFlipperStrategy",
+      modularity: "SEALED",
+      allowed_slots: [],
+      allowed_types: {},
+      description: "Atomic high-frequency position flipper strategy. Fully self-contained logic without external subcomponent composition."
+    },
+    "HYBRID_FIBONACCI_BALANCER": {
+      class: "HybridFibonacciBalancerStrategy",
+      modularity: "SEALED",
+      allowed_slots: [],
+      allowed_types: {},
+      description: "Hybrid Fibonacci balancer strategy. Self-contained sealed module."
+    },
+    "DYNAMIC_REDUCER": {
+      class: "DynamicReducerStrategy",
+      modularity: "SEALED",
+      allowed_slots: [],
+      allowed_types: {},
+      description: "Dynamic position reducer strategy. Self-contained sealed module."
+    }
+  }
+};
+
+const DEFAULT_SLOT_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
+  side_strategy: [
+    { value: "GRID_POSITION_FLIPPER", label: "GRID_POSITION_FLIPPER (Flipper Determinist - Default)" },
+    { value: "WEIGHTED_MAJORITY_2IN3", label: "WEIGHTED_MAJORITY_2IN3 (Mayoría Abierta 2/3)" },
+    { value: "POSITION_CONTRACTS_BIAS", label: "POSITION_CONTRACTS_BIAS (Sesgo por Contratos)" },
+    { value: "ANCHOR_PARITY", label: "ANCHOR_PARITY (Precio Ancla + Paridad ID)" }
+  ],
+  execution_strategy: [
+    { value: "STATIC_LIMIT", label: "STATIC_LIMIT (Orden Límite Estática GTX - Default)" },
+    { value: "CHASE_V2", label: "CHASE_V2 (Persecución Reactiva Maker / Post-Only)" },
+    { value: "MARKET_DIRECT", label: "MARKET_DIRECT (Ejecución Directa Mercado Taker)" }
+  ],
+  reduce_only_strategy: [
+    { value: "NEVER", label: "NEVER (Jamás reduceOnly - Default)" },
+    { value: "DYNAMIC_POSITION_REDUCE", label: "DYNAMIC_POSITION_REDUCE (Dinámico según Posición Previa)" },
+    { value: "ALWAYS", label: "ALWAYS (Siempre reduceOnly)" }
+  ]
+};
+
+let cachedStrategiesManifest: StrategiesManifest = DEFAULT_STRATEGIES_MANIFEST;
+
+async function fetchStrategiesManifest(): Promise<StrategiesManifest> {
+  const parentPort = config?.parent_api_port || "8000";
+  const endpoints = [
+    `http://127.0.0.1:${parentPort}/api/strategies/manifest`,
+    `http://127.0.0.1:${parentPort}/api/grid/strategies/manifest`
+  ];
+
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.strategies) {
+          cachedStrategiesManifest = data as StrategiesManifest;
+          return cachedStrategiesManifest;
+        }
+      }
+    } catch (_) {
+      // Continue to next fallback endpoint
+    }
+  }
+  return cachedStrategiesManifest;
+}
+
+function getCanonicalStrategyName(stratName: string): string {
+  const clean = (stratName || "GRID_POSITION_FLIPPER").toUpperCase().trim();
+  const canonicalMap: Record<string, string> = {
+    "GRID_POSITION_FLIPPER": "GRID_POSITION_FLIPPER",
+    "GRID_FLIPPER": "GRID_POSITION_FLIPPER",
+    "POSITION_FLIPPER": "GRID_POSITION_FLIPPER",
+    "FLIPPER": "GRID_POSITION_FLIPPER",
+    "HYBRID_FIBONACCI_BALANCER": "HYBRID_FIBONACCI_BALANCER",
+    "HYBRID_FIBONACCI": "HYBRID_FIBONACCI_BALANCER",
+    "FIBONACCI_BALANCER": "HYBRID_FIBONACCI_BALANCER",
+    "GRID_STANDARD": "HYBRID_FIBONACCI_BALANCER",
+    "GRID": "HYBRID_FIBONACCI_BALANCER",
+    "DYNAMIC_REDUCER": "DYNAMIC_REDUCER",
+    "DYNAMIC_POSITION_REDUCER": "DYNAMIC_REDUCER",
+    "DYNAMIC": "DYNAMIC_REDUCER"
+  };
+  return canonicalMap[clean] || clean;
+}
+
+function getManifestEntryForStrategy(stratName: string): StrategyManifestItem {
+  const key = getCanonicalStrategyName(stratName);
+  const strats = cachedStrategiesManifest?.strategies || DEFAULT_STRATEGIES_MANIFEST.strategies;
+  return strats[key] || {
+    modularity: "SEALED",
+    allowed_slots: [],
+    allowed_types: {},
+    description: "Atomic strategy. Fully self-contained logic."
+  };
+}
+
+function sanitizeStrategyParams(params: Record<string, any>, strategyName: string): Record<string, any> {
+  const canonical = getCanonicalStrategyName(strategyName);
+  const entry = getManifestEntryForStrategy(canonical);
+  const isSealed = (entry.modularity || "SEALED").toUpperCase() === "SEALED";
+  const cleaned: Record<string, any> = { ...params };
+
+  const prohibitedKeys = [
+    "side_strategy",
+    "reduce_only_strategy",
+    "execution_strategy",
+    "submodules",
+    "sub_modules",
+    "custom_submodule",
+    "side_policy",
+    "execution_policy",
+    "reduce_only_policy"
+  ];
+
+  if (isSealed) {
+    for (const key of prohibitedKeys) {
+      delete cleaned[key];
+    }
+  } else if (entry.modularity === "COMPOSABLE") {
+    const allowedSlots = new Set(entry.allowed_slots || []);
+
+    if (!allowedSlots.has("side_strategy")) {
+      delete cleaned["side_strategy"];
+      delete cleaned["side_policy"];
+    }
+    if (!allowedSlots.has("reduce_only_strategy")) {
+      delete cleaned["reduce_only_strategy"];
+      delete cleaned["reduce_only_policy"];
+    }
+    if (!allowedSlots.has("execution_strategy")) {
+      delete cleaned["execution_strategy"];
+      delete cleaned["execution_policy"];
+    }
+
+    delete cleaned["custom_submodule"];
+    delete cleaned["sub_modules"];
+
+    // Recursive helper to prune non-allowed slots and remove empty nested objects
+    const pruneSubmoduleTree = (obj: any): any => {
+      if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
+        return obj;
+      }
+      const result: Record<string, any> = {};
+      for (const [key, val] of Object.entries(obj)) {
+        if (allowedSlots.has(key)) {
+          if (typeof val === "object" && val !== null && !Array.isArray(val)) {
+            const prunedChild = pruneSubmoduleTree(val);
+            if (Object.keys(prunedChild).length > 0) {
+              result[key] = prunedChild;
+            }
+          } else if (val !== undefined && val !== null) {
+            result[key] = val;
+          }
+        }
+      }
+      return result;
+    };
+
+    if (cleaned.submodules && typeof cleaned.submodules === "object") {
+      const pruned = pruneSubmoduleTree(cleaned.submodules);
+      if (Object.keys(pruned).length > 0) {
+        cleaned.submodules = pruned;
+      } else {
+        delete cleaned.submodules;
+      }
+    }
+  }
+
+  return cleaned;
+}
+
+function syncStrategySelectorOptions() {
+  const stratNameEl = document.getElementById("inst-edit-strategy-name") as HTMLSelectElement | null;
+  if (!stratNameEl || !cachedStrategiesManifest?.strategies) return;
+
+  const currentVal = (stratNameEl.value || "GRID_POSITION_FLIPPER").toUpperCase().trim();
+  const canonicalVal = getCanonicalStrategyName(currentVal);
+  const strats = cachedStrategiesManifest.strategies;
+  
+  const optionsHtml = Object.keys(strats).map(key => {
+    const item = strats[key];
+    const isDefault = key === "GRID_POSITION_FLIPPER" ? " (Default)" : "";
+    const badgeLabel = (item.modularity || "SEALED").toUpperCase() === "SEALED" ? " [🔒 ATÓMICO]" : " [🧩 COMPOSABLE]";
+    return `<option value="${key}">${key}${badgeLabel}${isDefault}</option>`;
+  }).join("");
+
+  stratNameEl.innerHTML = optionsHtml;
+  if (strats[canonicalVal]) {
+    stratNameEl.value = canonicalVal;
+  } else if (strats[currentVal]) {
+    stratNameEl.value = currentVal;
+  } else {
+    stratNameEl.value = Object.keys(strats)[0] || "GRID_POSITION_FLIPPER";
+  }
+}
+
+function restoreSlotDefaultOptions(slotName: string, selectEl: HTMLSelectElement) {
+  const defaultOpts = DEFAULT_SLOT_OPTIONS[slotName];
+  if (!defaultOpts) return;
+  const currentVal = selectEl.value;
+  selectEl.innerHTML = defaultOpts.map(o => `<option value="${o.value}">${o.label}</option>`).join("");
+  if (defaultOpts.some(o => o.value === currentVal)) {
+    selectEl.value = currentVal;
+  } else {
+    selectEl.value = defaultOpts[0].value;
+  }
+}
+
+function populateSlotOptions(slotName: string, selectEl: HTMLSelectElement, allowedTypes: string[]) {
+  if (!allowedTypes || allowedTypes.length === 0) {
+    restoreSlotDefaultOptions(slotName, selectEl);
+    return;
+  }
+  const currentVal = selectEl.value;
+  const defaultOpts = DEFAULT_SLOT_OPTIONS[slotName] || [];
+  selectEl.innerHTML = allowedTypes.map(t => {
+    const match = defaultOpts.find(o => o.value === t);
+    const label = match ? match.label : t;
+    return `<option value="${t}">${label}</option>`;
+  }).join("");
+
+  if (allowedTypes.includes(currentVal)) {
+    selectEl.value = currentVal;
+  } else if (allowedTypes[0]) {
+    selectEl.value = allowedTypes[0];
+  }
+}
+
+function applyStrategyModularityUI(stratName: string) {
+  const entry = getManifestEntryForStrategy(stratName);
+  const isSealed = (entry.modularity || "SEALED").toUpperCase() === "SEALED";
+
+  const engineBadge = document.getElementById("strategy-engine-badge");
+  const engineDesc = document.getElementById("strategy-engine-desc");
+  const block3Banner = document.getElementById("block3-sealed-banner");
+
+  const sideStratEl = document.getElementById("inst-edit-side-strategy") as HTMLSelectElement | null;
+  const sideBadge = document.getElementById("badge-side-strategy-status");
+  const sideNote = document.getElementById("note-side-strategy");
+
+  const execStratEl = document.getElementById("inst-edit-execution-strategy") as HTMLSelectElement | null;
+  const execBadge = document.getElementById("badge-execution-strategy-status");
+  const execNote = document.getElementById("note-execution-strategy");
+
+  const reduceOnlyStratEl = document.getElementById("inst-edit-reduce-only-strategy") as HTMLSelectElement | null;
+  const reduceBadge = document.getElementById("badge-reduce-only-strategy-status");
+  const reduceNote = document.getElementById("note-reduce-only-strategy");
+
+  if (engineBadge) {
+    if (isSealed) {
+      engineBadge.className = "engine-modularity-badge engine-badge-sealed";
+      engineBadge.innerHTML = "🔒 MOTOR ATÓMICO SELLADO";
+    } else {
+      engineBadge.className = "engine-modularity-badge engine-badge-composable";
+      engineBadge.innerHTML = "🧩 MOTOR COMPOSABLE";
+    }
+  }
+
+  if (engineDesc) {
+    engineDesc.textContent = entry.description || (isSealed 
+      ? "Atomic high-frequency position flipper strategy. Fully self-contained logic without external subcomponent composition." 
+      : "Composable modular strategy permitting decoupled sub-policy slot assembly.");
+  }
+
+  if (block3Banner) {
+    if (isSealed) {
+      block3Banner.style.display = "flex";
+      block3Banner.className = "sealed-engine-notice-banner";
+      block3Banner.style.borderColor = "rgba(59, 130, 246, 0.25)";
+      block3Banner.style.background = "linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%)";
+      block3Banner.innerHTML = `
+        <span style="font-size: 14px;">🔒</span>
+        <span><strong>MOTOR ATÓMICO SELLADO:</strong> Las políticas de lado, reducción y ejecución están encapsuladas dentro del núcleo de la estrategia. Los selectores de submódulos externos permanecen bloqueados y no serán transmitidos a la API.</span>
+      `;
+    } else {
+      block3Banner.style.display = "flex";
+      block3Banner.className = "sealed-engine-notice-banner";
+      block3Banner.style.borderColor = "rgba(168, 85, 247, 0.4)";
+      block3Banner.style.background = "linear-gradient(135deg, rgba(30, 27, 75, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%)";
+      const allowedStr = (entry.allowed_slots && entry.allowed_slots.length > 0) ? entry.allowed_slots.join(', ') : 'Ninguno';
+      block3Banner.innerHTML = `
+        <span style="font-size: 14px;">🧩</span>
+        <span><strong>MOTOR COMPOSABLE ACTIVO:</strong> Se habilitan los slots modulares autorizados en el manifest (<span style="color: #c084fc;">${allowedStr}</span>).</span>
+      `;
+    }
+  }
+
+  const allowedSlots = new Set(entry.allowed_slots || []);
+
+  // 1. Side Strategy
+  if (sideStratEl) {
+    const isAllowed = !isSealed && allowedSlots.has("side_strategy");
+    sideStratEl.disabled = !isAllowed;
+    if (isAllowed) {
+      sideStratEl.classList.remove("subpolicy-muted-input");
+      sideStratEl.classList.add("subpolicy-active-input");
+      if (sideBadge) {
+        sideBadge.className = "submodule-slot-badge is-active-badge";
+        sideBadge.textContent = "🧩 SLOT HABILITADO";
+      }
+      if (sideNote) sideNote.textContent = "🧩 Selector de lado composable habilitado.";
+      if (entry.allowed_types?.side_strategy && Array.isArray(entry.allowed_types.side_strategy)) {
+        populateSlotOptions("side_strategy", sideStratEl, entry.allowed_types.side_strategy);
+      } else {
+        restoreSlotDefaultOptions("side_strategy", sideStratEl);
+      }
+    } else {
+      sideStratEl.classList.add("subpolicy-muted-input");
+      sideStratEl.classList.remove("subpolicy-active-input");
+      restoreSlotDefaultOptions("side_strategy", sideStratEl);
+      if (sideBadge) {
+        sideBadge.className = "submodule-slot-badge is-muted-badge";
+        sideBadge.textContent = isSealed ? "🔒 AUTO-RESUELTO" : "🔒 SLOT NO PERMITIDO";
+      }
+      if (sideNote) sideNote.textContent = isSealed ? "🔒 Gestionado internamente por el motor sellado." : "🔒 Slot no habilitado para esta estrategia.";
+    }
+  }
+
+  // 2. Execution Strategy
+  if (execStratEl) {
+    const isAllowed = !isSealed && allowedSlots.has("execution_strategy");
+    execStratEl.disabled = !isAllowed;
+    if (isAllowed) {
+      execStratEl.classList.remove("subpolicy-muted-input");
+      execStratEl.classList.add("subpolicy-active-input");
+      if (execBadge) {
+        execBadge.className = "submodule-slot-badge is-active-badge";
+        execBadge.textContent = "🧩 SLOT HABILITADO";
+      }
+      if (execNote) execNote.textContent = "🧩 Estrategia de ejecución composable habilitada.";
+      if (entry.allowed_types?.execution_strategy && Array.isArray(entry.allowed_types.execution_strategy)) {
+        populateSlotOptions("execution_strategy", execStratEl, entry.allowed_types.execution_strategy);
+      } else {
+        restoreSlotDefaultOptions("execution_strategy", execStratEl);
+      }
+    } else {
+      execStratEl.classList.add("subpolicy-muted-input");
+      execStratEl.classList.remove("subpolicy-active-input");
+      restoreSlotDefaultOptions("execution_strategy", execStratEl);
+      if (execBadge) {
+        execBadge.className = "submodule-slot-badge is-muted-badge";
+        execBadge.textContent = isSealed ? "🔒 AUTO-INCLUIDO" : "🔒 SLOT NO PERMITIDO";
+      }
+      if (execNote) execNote.textContent = isSealed ? "🔒 Persecución y colocación gobernadas por el motor nuclear." : "🔒 Slot no habilitado para esta estrategia.";
+    }
+  }
+
+  // 3. Reduce-Only Strategy
+  if (reduceOnlyStratEl) {
+    const isAllowed = !isSealed && allowedSlots.has("reduce_only_strategy");
+    reduceOnlyStratEl.disabled = !isAllowed;
+    if (isAllowed) {
+      reduceOnlyStratEl.classList.remove("subpolicy-muted-input");
+      reduceOnlyStratEl.classList.add("subpolicy-active-input");
+      if (reduceBadge) {
+        reduceBadge.className = "submodule-slot-badge is-active-badge";
+        reduceBadge.textContent = "🧩 SLOT HABILITADO";
+      }
+      if (reduceNote) reduceNote.textContent = "🧩 Política reduce-only composable habilitada.";
+      if (entry.allowed_types?.reduce_only_strategy && Array.isArray(entry.allowed_types.reduce_only_strategy)) {
+        populateSlotOptions("reduce_only_strategy", reduceOnlyStratEl, entry.allowed_types.reduce_only_strategy);
+      } else {
+        restoreSlotDefaultOptions("reduce_only_strategy", reduceOnlyStratEl);
+      }
+    } else {
+      reduceOnlyStratEl.classList.add("subpolicy-muted-input");
+      reduceOnlyStratEl.classList.remove("subpolicy-active-input");
+      restoreSlotDefaultOptions("reduce_only_strategy", reduceOnlyStratEl);
+      if (reduceBadge) {
+        reduceBadge.className = "submodule-slot-badge is-muted-badge";
+        reduceBadge.textContent = isSealed ? "🔒 AUTO-INCLUIDO" : "🔒 SLOT NO PERMITIDO";
+      }
+      if (reduceNote) reduceNote.textContent = isSealed ? "🔒 Reglas de reduce_only calculadas internamente según estado de posición." : "🔒 Slot no habilitado para esta estrategia.";
+    }
+  }
+}
+
 let loadedInstances: BotInstanceData[] = [];
 let selectedInstanceId: number | null = null;
 
@@ -2204,17 +2606,28 @@ function renderInstanceForm(inst: BotInstanceData) {
   if (profitEl) profitEl.value = ((params.profit_pc ?? 0.005) * 100).toFixed(3);
   if (threshEl) threshEl.value = ((params.threshold_pc ?? 0.01) * 100).toFixed(3);
   if (chaseEl) chaseEl.value = params.chase_behavior || "flat";
-  if (stratNameEl) stratNameEl.value = params.strategy_name || "GRID_POSITION_FLIPPER";
-  if (sideStratEl) sideStratEl.value = params.side_strategy || "GRID_POSITION_FLIPPER";
-  if (reduceOnlyStratEl) reduceOnlyStratEl.value = params.reduce_only_strategy || "NEVER";
-  if (execStratEl) execStratEl.value = params.execution_strategy || "STATIC_LIMIT";
+
+  const rawStratName = params.strategy_name || inst.strategy_type || "GRID_POSITION_FLIPPER";
+  const canonicalStrat = getCanonicalStrategyName(rawStratName);
+  if (stratNameEl) {
+    stratNameEl.value = canonicalStrat;
+    if (!stratNameEl.value) {
+      stratNameEl.value = stratNameEl.options[0]?.value || "GRID_POSITION_FLIPPER";
+    }
+  }
+  if (sideStratEl && params.side_strategy) sideStratEl.value = params.side_strategy;
+  if (reduceOnlyStratEl && params.reduce_only_strategy) reduceOnlyStratEl.value = params.reduce_only_strategy;
+  if (execStratEl && params.execution_strategy) execStratEl.value = params.execution_strategy;
   if (entryTtlEl) entryTtlEl.value = (params.entry_ttl_seconds ?? 10).toString();
   if (bypassEl) bypassEl.checked = !!params.bypass_global_guards;
   if (disableScaleEl) disableScaleEl.checked = !!params.disable_balance_scaling;
   if (enableShadowLedgerEl) enableShadowLedgerEl.checked = !!params.enable_shadow_ledger;
 
+  applyStrategyModularityUI(stratNameEl?.value || canonicalStrat);
+
   if (rawJsonEl) rawJsonEl.value = JSON.stringify(params, null, 2);
 }
+
 
 function getInstanceStatusColor(status: string): string {
   switch ((status || '').toUpperCase()) {
@@ -2696,9 +3109,6 @@ function prepareNewInstanceForm() {
       threshold_pc: 0.01,
       chase_behavior: "flat",
       strategy_name: "GRID_POSITION_FLIPPER",
-      side_strategy: "GRID_POSITION_FLIPPER",
-      reduce_only_strategy: "NEVER",
-      execution_strategy: "STATIC_LIMIT",
       entry_ttl_seconds: 10,
       bypass_global_guards: false,
       disable_balance_scaling: false
@@ -2750,15 +3160,34 @@ async function saveInstanceConfigHot() {
   if (profitEl) updatedParams["profit_pc"] = parseFloat(profitEl.value) / 100.0;
   if (threshEl) updatedParams["threshold_pc"] = parseFloat(threshEl.value) / 100.0;
   if (chaseEl) updatedParams["chase_behavior"] = chaseEl.value;
-  if (stratNameEl) updatedParams["strategy_name"] = stratNameEl.value || "GRID_POSITION_FLIPPER";
-  if (sideStratEl) updatedParams["side_strategy"] = sideStratEl.value || "GRID_POSITION_FLIPPER";
-  if (reduceOnlyStratEl) updatedParams["reduce_only_strategy"] = reduceOnlyStratEl.value;
-  if (execStratEl) updatedParams["execution_strategy"] = execStratEl.value;
+  
+  const chosenStrategy = (stratNameEl?.value || "GRID_POSITION_FLIPPER").toUpperCase().trim();
+  const canonicalStrat = getCanonicalStrategyName(chosenStrategy);
+  updatedParams["strategy_name"] = chosenStrategy;
+
   if (entryTtlEl) updatedParams["entry_ttl_seconds"] = parseInt(entryTtlEl.value, 10) || 10;
   if (bypassEl) updatedParams["bypass_global_guards"] = bypassEl.checked;
   if (disableScaleEl) updatedParams["disable_balance_scaling"] = disableScaleEl.checked;
   if (enableShadowLedgerEl) updatedParams["enable_shadow_ledger"] = enableShadowLedgerEl.checked;
 
+  // Schema-Driven Sub-policy and Payload Sanitization (R3: Prohibited sub-policies never transmitted for sealed strategies)
+  const manifestEntry = getManifestEntryForStrategy(canonicalStrat);
+  if (manifestEntry.modularity === "COMPOSABLE") {
+    const allowedSlots = new Set(manifestEntry.allowed_slots || []);
+    if (allowedSlots.has("side_strategy") && sideStratEl) {
+      updatedParams["side_strategy"] = sideStratEl.value;
+    }
+    if (allowedSlots.has("reduce_only_strategy") && reduceOnlyStratEl) {
+      updatedParams["reduce_only_strategy"] = reduceOnlyStratEl.value;
+    }
+    if (allowedSlots.has("execution_strategy") && execStratEl) {
+      updatedParams["execution_strategy"] = execStratEl.value;
+    }
+  }
+
+  updatedParams = sanitizeStrategyParams(updatedParams, chosenStrategy);
+
+  if (rawJsonEl) rawJsonEl.value = JSON.stringify(updatedParams, null, 2);
 
   const payload = {
     name: nameEl?.value || "Instance",
@@ -2822,8 +3251,22 @@ function initInstanceModalListeners() {
   const saveBtn = document.getElementById("btn-save-instance-modal");
   const selectDropdown = document.getElementById("instance-select-dropdown") as HTMLSelectElement;
   const headerSelector = document.getElementById("header-instance-selector") as HTMLSelectElement;
+  const stratNameEl = document.getElementById("inst-edit-strategy-name") as HTMLSelectElement | null;
 
-
+  if (stratNameEl) {
+    stratNameEl.addEventListener("change", () => {
+      applyStrategyModularityUI(stratNameEl.value);
+      const rawJsonEl = document.getElementById("inst-edit-raw-json") as HTMLTextAreaElement | null;
+      if (rawJsonEl && rawJsonEl.value.trim()) {
+        try {
+          const parsed = JSON.parse(rawJsonEl.value);
+          parsed.strategy_name = stratNameEl.value;
+          const sanitized = sanitizeStrategyParams(parsed, stratNameEl.value);
+          rawJsonEl.value = JSON.stringify(sanitized, null, 2);
+        } catch (_) {}
+      }
+    });
+  }
 
   if (headerSelector) {
     headerSelector.addEventListener("change", () => {
@@ -2834,13 +3277,15 @@ function initInstanceModalListeners() {
   }
 
   if (openBtn) {
-    openBtn.addEventListener("click", () => {
+    openBtn.addEventListener("click", async () => {
       isCreatingNewInstance = false;
       if (saveBtn) {
         saveBtn.innerHTML = "💾 Guardar en Caliente";
         (saveBtn as HTMLElement).style.background = "#10b981";
       }
       if (modalEl) modalEl.style.display = "flex";
+      await fetchStrategiesManifest();
+      syncStrategySelectorOptions();
       refreshInstanceModalDropdown();
     });
   }
@@ -2852,12 +3297,14 @@ function initInstanceModalListeners() {
 
   if (closeBtn) closeBtn.addEventListener("click", closeModal);
   if (cancelBtn) cancelBtn.addEventListener("click", closeModal);
-  if (refreshBtn) refreshBtn.addEventListener("click", () => {
+  if (refreshBtn) refreshBtn.addEventListener("click", async () => {
     isCreatingNewInstance = false;
     if (saveBtn) {
       saveBtn.innerHTML = "💾 Guardar en Caliente";
       (saveBtn as HTMLElement).style.background = "#10b981";
     }
+    await fetchStrategiesManifest();
+    syncStrategySelectorOptions();
     refreshInstanceModalDropdown();
   });
 
@@ -2885,8 +3332,13 @@ function initInstanceModalListeners() {
     saveBtn.addEventListener("click", () => saveInstanceConfigHot());
   }
 
-  // Cargar lista de instancias al iniciar la aplicación para poblar el header selector
-  refreshInstanceModalDropdown();
+  // Pre-cargar manifest e instancias al iniciar la aplicación
+  fetchStrategiesManifest().then(() => {
+    syncStrategySelectorOptions();
+    refreshInstanceModalDropdown();
+  }).catch(() => {
+    refreshInstanceModalDropdown();
+  });
 }
 
 // Bind modal listeners on document load
@@ -2895,4 +3347,5 @@ if (document.readyState === "loading") {
 } else {
   initInstanceModalListeners();
 }
+
 

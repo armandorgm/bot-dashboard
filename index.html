@@ -240,49 +240,64 @@
                       <option value="fibonacci">fibonacci</option>
                     </select>
                   </div>
-                  <div>
-                    <label style="display: block; color: #58a6ff; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Estrategia central del motor (Engine / Module A)">ESTRATEGIA MOTOR (TRADING)</label>
+                  <div style="grid-column: span 1;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                      <label style="color: #58a6ff; font-size: 10px; font-weight: bold;" title="Estrategia central del motor (Engine / Module A)">ESTRATEGIA MOTOR (TRADING)</label>
+                      <span id="strategy-engine-badge" class="engine-modularity-badge engine-badge-sealed">🔒 MOTOR ATÓMICO SELLADO</span>
+                    </div>
                     <select id="inst-edit-strategy-name" style="width: 100%; background: #0d1117; color: #58a6ff; border: 1px solid #388bfd; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; font-weight: bold; box-sizing: border-box; cursor: pointer;">
                       <option value="GRID_POSITION_FLIPPER" selected>GRID_POSITION_FLIPPER (Position Flipper - Default)</option>
                       <option value="HYBRID_FIBONACCI_BALANCER">HYBRID_FIBONACCI_BALANCER (Fibonacci Balancer)</option>
                       <option value="DYNAMIC_REDUCER">DYNAMIC_REDUCER (Dynamic Reducer)</option>
                     </select>
+                    <div id="strategy-engine-desc" class="strategy-context-description">Atomic high-frequency position flipper strategy. Fully self-contained logic without external subcomponent composition.</div>
                   </div>
-                  <div>
-                    <label style="display: block; color: #58a6ff; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Estrategia para resolver el lado de entrada inicial (LONG/SHORT)">ESTRATEGIA LADO (SIDE)</label>
-                    <select id="inst-edit-side-strategy" style="width: 100%; background: #0d1117; color: #58a6ff; border: 1px solid #388bfd; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; font-weight: bold; box-sizing: border-box; cursor: pointer;">
+                  <div id="container-side-strategy" style="grid-column: span 1;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                      <label style="color: #58a6ff; font-size: 10px; font-weight: bold;" title="Estrategia para resolver el lado de entrada inicial (LONG/SHORT)">ESTRATEGIA LADO (SIDE)</label>
+                      <span id="badge-side-strategy-status" class="submodule-slot-badge is-muted-badge">🔒 AUTO-RESUELTO</span>
+                    </div>
+                    <select id="inst-edit-side-strategy" class="subpolicy-muted-input" disabled style="width: 100%; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; font-weight: bold; box-sizing: border-box;">
                       <option value="GRID_POSITION_FLIPPER" selected>GRID_POSITION_FLIPPER (Flipper Determinist - Default)</option>
                       <option value="WEIGHTED_MAJORITY_2IN3">WEIGHTED_MAJORITY_2IN3 (Mayoría Abierta 2/3)</option>
                       <option value="POSITION_CONTRACTS_BIAS">POSITION_CONTRACTS_BIAS (Sesgo por Contratos)</option>
                       <option value="ANCHOR_PARITY">ANCHOR_PARITY (Precio Ancla + Paridad ID)</option>
                     </select>
+                    <div id="note-side-strategy" class="submodule-slot-note">🔒 Gestionado internamente por el motor sellado.</div>
                   </div>
                 </div>
               </div>
 
               <!-- BLOQUE 3: Estrategia de Ejecución & Políticas de Reducción (CONTENEDOR PRINCIPAL) -->
-              <div style="background: #161b22; border: 1px solid #388bfd; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 14px; box-shadow: inset 0 0 10px rgba(56, 139, 253, 0.05);">
+              <div id="block3-container" style="background: #161b22; border: 1px solid #388bfd; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 14px; box-shadow: inset 0 0 10px rgba(56, 139, 253, 0.05);">
                 <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #30363d; padding-bottom: 10px;">
                   <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 14px;">⚡</span>
                     <h4 style="margin: 0; color: #a371f7; font-size: 13px; font-weight: bold; text-transform: uppercase; tracking: 0.05em;">Bloque 3: Ejecución y Políticas de Reducción</h4>
                   </div>
-                  <span style="font-size: 10px; color: #8b949e; background: #0d1117; border: 1px solid #30363d; padding: 2px 6px; border-radius: 4px;">JERARQUÍA MAESTRA</span>
+                  <span id="block3-hierarchy-badge" style="font-size: 10px; color: #8b949e; background: #0d1117; border: 1px solid #30363d; padding: 2px 6px; border-radius: 4px;">JERARQUÍA MAESTRA</span>
+                </div>
+
+                <!-- Banner contextual para Sealed Engine -->
+                <div id="block3-sealed-banner" class="sealed-engine-notice-banner">
+                  <span style="font-size: 14px;">🔒</span>
+                  <span><strong>MOTOR ATÓMICO SELLADO:</strong> Las políticas de lado, reducción y ejecución están encapsuladas dentro del núcleo de la estrategia. Los selectores de submódulos externos permanecen bloqueados y no serán transmitidos a la API.</span>
                 </div>
 
                 <!-- Selector Jerárquico Superior: Estrategia de Ejecución -->
-                <div style="background: #0d1117; border: 1px solid #8957e5; border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+                <div id="container-execution-strategy" style="background: #0d1117; border: 1px solid #8957e5; border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
                   <div style="display: flex; justify-content: space-between; align-items: center;">
                     <label style="color: #a371f7; font-size: 11px; font-weight: bold;" title="Determina CÓMO se coloca/persigue la orden en el mercado">ESTRATEGIA DE EJECUCIÓN (CONTENEDOR SUPERIOR)</label>
-                    <span style="font-size: 9px; color: #8957e5; font-weight: bold;">[JERARQUÍA NIVEL 1]</span>
+                    <span id="badge-execution-strategy-status" class="submodule-slot-badge is-muted-badge">🔒 AUTO-INCLUIDO</span>
                   </div>
                   <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
                     <div>
-                      <select id="inst-edit-execution-strategy" style="width: 100%; background: #161b22; color: #a371f7; border: 1px solid #8957e5; border-radius: 4px; padding: 8px; font-family: inherit; font-size: 12px; font-weight: bold; box-sizing: border-box; cursor: pointer;">
+                      <select id="inst-edit-execution-strategy" class="subpolicy-muted-input" disabled style="width: 100%; border-radius: 4px; padding: 8px; font-family: inherit; font-size: 12px; font-weight: bold; box-sizing: border-box;">
                         <option value="STATIC_LIMIT">STATIC_LIMIT (Orden Límite Estática GTX - Default)</option>
                         <option value="CHASE_V2">CHASE_V2 (Persecución Reactiva Maker / Post-Only)</option>
                         <option value="MARKET_DIRECT">MARKET_DIRECT (Ejecución Directa Mercado Taker)</option>
                       </select>
+                      <div id="note-execution-strategy" class="submodule-slot-note">🔒 Persecución/ejecución gobernada por el motor central.</div>
                     </div>
                     <div>
                       <div style="display: flex; align-items: center; gap: 6px; height: 100%;">
@@ -294,19 +309,20 @@
                 </div>
 
                 <!-- Sub-configuración Anidada: Políticas de Reduce-Only & Rescate -->
-                <div style="margin-left: 16px; padding-left: 14px; border-left: 2px solid #8957e5; display: flex; flex-direction: column; gap: 12px; background: rgba(137, 87, 229, 0.03); padding-top: 10px; padding-bottom: 10px; padding-right: 10px; border-radius: 0 6px 6px 0;">
+                <div id="container-reduce-only-strategy" style="margin-left: 16px; padding-left: 14px; border-left: 2px solid #8957e5; display: flex; flex-direction: column; gap: 12px; background: rgba(137, 87, 229, 0.03); padding-top: 10px; padding-bottom: 10px; padding-right: 10px; border-radius: 0 6px 6px 0;">
                   <div style="display: flex; align-items: center; justify-content: space-between;">
                     <span style="font-size: 10px; color: #e3b341; font-weight: bold;">⤷ SUB-CONFIGURACIÓN DEPENDIENTE DE EJECUCIÓN</span>
-                    <span style="font-size: 9px; color: #d29922; font-weight: bold;">[JERARQUÍA NIVEL 2]</span>
+                    <span id="badge-reduce-only-strategy-status" class="submodule-slot-badge is-muted-badge">🔒 AUTO-INCLUIDO</span>
                   </div>
 
                   <div>
                     <label style="display: block; color: #e3b341; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Determina si la orden lleva el flag reduceOnly=True">POLÍTICA REDUCE-ONLY (`reduce_only_strategy`)</label>
-                    <select id="inst-edit-reduce-only-strategy" style="width: 100%; background: #0d1117; color: #e3b341; border: 1px solid #d29922; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; font-weight: bold; box-sizing: border-box; cursor: pointer;">
+                    <select id="inst-edit-reduce-only-strategy" class="subpolicy-muted-input" disabled style="width: 100%; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; font-weight: bold; box-sizing: border-box;">
                       <option value="NEVER">NEVER (Jamás reduceOnly - Default)</option>
                       <option value="DYNAMIC_POSITION_REDUCE">DYNAMIC_POSITION_REDUCE (Dinámico según Posición Previa)</option>
                       <option value="ALWAYS">ALWAYS (Siempre reduceOnly)</option>
                     </select>
+                    <div id="note-reduce-only-strategy" class="submodule-slot-note">🔒 Reglas de reduce_only calculadas internamente según estado de posición.</div>
                   </div>
                 </div>
 
