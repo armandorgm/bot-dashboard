@@ -2183,6 +2183,7 @@ function renderInstanceForm(inst: BotInstanceData) {
   const profitEl = document.getElementById("inst-edit-profit-pc") as HTMLInputElement;
   const threshEl = document.getElementById("inst-edit-threshold-pc") as HTMLInputElement;
   const chaseEl = document.getElementById("inst-edit-chase") as HTMLSelectElement;
+  const stratNameEl = document.getElementById("inst-edit-strategy-name") as HTMLSelectElement;
   const sideStratEl = document.getElementById("inst-edit-side-strategy") as HTMLSelectElement;
   const reduceOnlyStratEl = document.getElementById("inst-edit-reduce-only-strategy") as HTMLSelectElement;
   const execStratEl = document.getElementById("inst-edit-execution-strategy") as HTMLSelectElement;
@@ -2203,7 +2204,8 @@ function renderInstanceForm(inst: BotInstanceData) {
   if (profitEl) profitEl.value = ((params.profit_pc ?? 0.005) * 100).toFixed(3);
   if (threshEl) threshEl.value = ((params.threshold_pc ?? 0.01) * 100).toFixed(3);
   if (chaseEl) chaseEl.value = params.chase_behavior || "flat";
-  if (sideStratEl) sideStratEl.value = params.side_strategy || "WEIGHTED_MAJORITY_2IN3";
+  if (stratNameEl) stratNameEl.value = params.strategy_name || "GRID_POSITION_FLIPPER";
+  if (sideStratEl) sideStratEl.value = params.side_strategy || "GRID_POSITION_FLIPPER";
   if (reduceOnlyStratEl) reduceOnlyStratEl.value = params.reduce_only_strategy || "NEVER";
   if (execStratEl) execStratEl.value = params.execution_strategy || "STATIC_LIMIT";
   if (entryTtlEl) entryTtlEl.value = (params.entry_ttl_seconds ?? 10).toString();
@@ -2693,7 +2695,8 @@ function prepareNewInstanceForm() {
       profit_pc: 0.005,
       threshold_pc: 0.01,
       chase_behavior: "flat",
-      side_strategy: "WEIGHTED_MAJORITY_2IN3",
+      strategy_name: "GRID_POSITION_FLIPPER",
+      side_strategy: "GRID_POSITION_FLIPPER",
       reduce_only_strategy: "NEVER",
       execution_strategy: "STATIC_LIMIT",
       entry_ttl_seconds: 10,
@@ -2722,6 +2725,7 @@ async function saveInstanceConfigHot() {
   const profitEl = document.getElementById("inst-edit-profit-pc") as HTMLInputElement;
   const threshEl = document.getElementById("inst-edit-threshold-pc") as HTMLInputElement;
   const chaseEl = document.getElementById("inst-edit-chase") as HTMLSelectElement;
+  const stratNameEl = document.getElementById("inst-edit-strategy-name") as HTMLSelectElement;
   const sideStratEl = document.getElementById("inst-edit-side-strategy") as HTMLSelectElement;
   const reduceOnlyStratEl = document.getElementById("inst-edit-reduce-only-strategy") as HTMLSelectElement;
   const execStratEl = document.getElementById("inst-edit-execution-strategy") as HTMLSelectElement;
@@ -2746,7 +2750,8 @@ async function saveInstanceConfigHot() {
   if (profitEl) updatedParams["profit_pc"] = parseFloat(profitEl.value) / 100.0;
   if (threshEl) updatedParams["threshold_pc"] = parseFloat(threshEl.value) / 100.0;
   if (chaseEl) updatedParams["chase_behavior"] = chaseEl.value;
-  if (sideStratEl) updatedParams["side_strategy"] = sideStratEl.value;
+  if (stratNameEl) updatedParams["strategy_name"] = stratNameEl.value || "GRID_POSITION_FLIPPER";
+  if (sideStratEl) updatedParams["side_strategy"] = sideStratEl.value || "GRID_POSITION_FLIPPER";
   if (reduceOnlyStratEl) updatedParams["reduce_only_strategy"] = reduceOnlyStratEl.value;
   if (execStratEl) updatedParams["execution_strategy"] = execStratEl.value;
   if (entryTtlEl) updatedParams["entry_ttl_seconds"] = parseInt(entryTtlEl.value, 10) || 10;

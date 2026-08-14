@@ -241,8 +241,17 @@
                     </select>
                   </div>
                   <div>
-                    <label style="display: block; color: #58a6ff; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Estrategia para seleccionar el lado de entrada (LONG/SHORT)">ESTRATEGIA LADO (SIDE)</label>
+                    <label style="display: block; color: #58a6ff; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Estrategia central del motor (Engine / Module A)">ESTRATEGIA MOTOR (TRADING)</label>
+                    <select id="inst-edit-strategy-name" style="width: 100%; background: #0d1117; color: #58a6ff; border: 1px solid #388bfd; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; font-weight: bold; box-sizing: border-box; cursor: pointer;">
+                      <option value="GRID_POSITION_FLIPPER" selected>GRID_POSITION_FLIPPER (Position Flipper - Default)</option>
+                      <option value="HYBRID_FIBONACCI_BALANCER">HYBRID_FIBONACCI_BALANCER (Fibonacci Balancer)</option>
+                      <option value="DYNAMIC_REDUCER">DYNAMIC_REDUCER (Dynamic Reducer)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style="display: block; color: #58a6ff; font-size: 10px; font-weight: bold; margin-bottom: 4px;" title="Estrategia para resolver el lado de entrada inicial (LONG/SHORT)">ESTRATEGIA LADO (SIDE)</label>
                     <select id="inst-edit-side-strategy" style="width: 100%; background: #0d1117; color: #58a6ff; border: 1px solid #388bfd; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 12px; font-weight: bold; box-sizing: border-box; cursor: pointer;">
+                      <option value="GRID_POSITION_FLIPPER" selected>GRID_POSITION_FLIPPER (Flipper Determinist - Default)</option>
                       <option value="WEIGHTED_MAJORITY_2IN3">WEIGHTED_MAJORITY_2IN3 (Mayoría Abierta 2/3)</option>
                       <option value="POSITION_CONTRACTS_BIAS">POSITION_CONTRACTS_BIAS (Sesgo por Contratos)</option>
                       <option value="ANCHOR_PARITY">ANCHOR_PARITY (Precio Ancla + Paridad ID)</option>
