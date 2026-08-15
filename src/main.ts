@@ -958,8 +958,9 @@ function connectWebSocket() {
       connTextEl.textContent = 'CONNECTED';
     }
     addLog(`WebSocket connection established! Listening for local metrics/logs.`, 'success');
-    // Fetch latest open orders to sync
+    // Fetch latest open orders and active pipelines to sync initial snapshot
     fetchOpenOrders();
+    fetchActivePipelines();
   };
 
   ws.onmessage = (event) => {
@@ -986,6 +987,27 @@ function connectWebSocket() {
       }
       else if (payload.type === 'modifications_update' && payload.data) {
         updateModificationsList(payload.data);
+      }
+      else if (payload.type === 'pipelines_active' && payload.data) {
+        processActivePipelinesData(payload.data);
+      }
+      else if (payload.type === 'session_update' && payload.data) {
+        const d = payload.data;
+        const targetInstId = d.instance_id !== null && d.instance_id !== undefined ? d.instance_id : (selectedInstanceId !== null ? selectedInstanceId : parseInt(config.instance_id || "1", 10));
+        if (typeof d.net_pnl === 'number') {
+          sessionMetrics.setRealizedPnL(d.net_pnl, targetInstId);
+        }
+        if (d.start_time) {
+          const rawStr = String(d.start_time);
+          const isoStr = rawStr.endsWith('Z') ? rawStr : rawStr + 'Z';
+          const parsedTs = new Date(isoStr).getTime();
+          if (!isNaN(parsedTs)) {
+            sessionStartTimeMap.set(targetInstId, parsedTs);
+          }
+        }
+        const latestBid = history.length > 0 ? history[history.length - 1].bid : 0;
+        const latestAsk = history.length > 0 ? history[history.length - 1].ask : 0;
+        updatePnLDisplay(latestBid, latestAsk);
       }
       else if (payload.type === 'query_log' && payload.data) {
         const d = payload.data;
@@ -1210,6 +1232,104 @@ let lastLoggedProcessCount = -1;
 const trackedSessionProcessIds = new Set<number>();
 const completedSessionProcessIds = new Set<number>();
 
+function processActivePipelinesData(data: ChasePipelineProcess[], rawText?: string) {
+  if (!Array.isArray(data)) return;
+
+  // Register active positions in SessionMetricsTracker ONLY when entry is filled (WAITING_TP_FILL)
+  data.forEach((proc) => {
+    if (proc.status !== 'COMPLETED' && proc.status !== 'ABORTED') {
+      trackedSessionProcessIds.add(proc.id);
+      // Position is only active in exchange if status is WAITING_TP_FILL or has exit_order_id
+      const isPositionOpen = proc.status === 'WAITING_TP_FILL' || Boolean(proc.exit_order_id);
+      const entryPrice = proc.last_order_price || proc.initial_price || 0;
+      if (isPositionOpen && entryPrice > 0) {
+        let procCreatedAt = Date.now();
+        if (proc.created_at) {
+          const rawStr = String(proc.created_at);
+          const isoStr = rawStr.endsWith('Z') ? rawStr : rawStr + 'Z';
+          const parsed = new Date(isoStr).getTime();
+          if (!isNaN(parsed)) procCreatedAt = parsed;
+        }
+        sessionMetrics.registerPosition({
+          processId: proc.id,
+          instanceId: proc.instance_id,
+          symbol: proc.symbol,
+          entryPrice: entryPrice,
+          amount: proc.amount || 0,
+          side: proc.side || 'BUY',
+          createdAt: procCreatedAt
+        });
+      }
+    }
+  });
+
+  // Detect processes that transition to COMPLETED or were recently finished
+  for (const procId of Array.from(trackedSessionProcessIds)) {
+    const proc = data.find(p => p.id === procId);
+    // If process is now COMPLETED or no longer present in active list
+    if (proc && proc.status === 'COMPLETED' && !completedSessionProcessIds.has(procId)) {
+      completedSessionProcessIds.add(procId);
+      trackedSessionProcessIds.delete(procId);
+
+      const pos = sessionMetrics.closePosition(procId);
+      const entryPrice = pos ? pos.entryPrice : (proc.initial_price || proc.last_order_price || 0);
+      const exitPrice = proc.last_tick_price || proc.last_order_price || entryPrice;
+      const amount = pos ? pos.amount : (proc.amount || 1);
+      const side = pos ? pos.side : (proc.side || 'BUY');
+
+      const isLong = side.toUpperCase() === 'BUY' || side.toUpperCase() === 'LONG';
+      const priceDiff = isLong ? (exitPrice - entryPrice) : (entryPrice - exitPrice);
+      const tradePnL = priceDiff * amount;
+
+      // Add to Session Realized PnL for target instance
+      const procInstId = proc.instance_id || (selectedInstanceId !== null ? selectedInstanceId : parseInt(config.instance_id || "1", 10));
+      sessionMetrics.addRealizedPnL(tradePnL, procInstId);
+      addLog(`[SESSION PnL] Process #${procId} (Inst #${procInstId}) COMPLETED. Trade PnL: $${tradePnL.toFixed(4)}`, tradePnL >= 0 ? 'success' : 'warn');
+
+      // Find anchor canvas coordinates for exit or entry marker
+      let anchorX = canvasEl ? canvasEl.width * 0.5 : 200;
+      let anchorY = canvasEl ? canvasEl.height * 0.5 : 150;
+
+      if (proc.exit_order_id) {
+        const foundMarker = activeMarkers.find(m => m.events.some(e => String(e.orderId) === String(proc.exit_order_id)));
+        if (foundMarker) {
+          anchorX = foundMarker.x;
+          anchorY = foundMarker.y;
+        }
+      }
+
+      // Trigger 10-second golden coin animation
+      coinAnimationManager.triggerCoinAnimation(
+        procId,
+        entryPrice,
+        exitPrice,
+        amount,
+        side,
+        anchorX,
+        anchorY
+      );
+    }
+  }
+
+  // Permanently register orderId -> processId relations for lifetime display
+  data.forEach(proc => orderProcessRegistry.registerProcess(proc));
+
+  activeChaseProcesses = data;
+  if (data.length !== lastLoggedProcessCount) {
+    lastLoggedProcessCount = data.length;
+    if (rawText) {
+      addLog(`[ACTIVE PIPELINES API] ${data.length} procesos activos recibidos: ${rawText}`, 'info');
+    }
+  }
+
+  // Update PnL displays
+  const latestBid = history.length > 0 ? history[history.length - 1].bid : 0;
+  const latestAsk = history.length > 0 ? history[history.length - 1].ask : 0;
+  updatePnLDisplay(latestBid, latestAsk);
+
+  drawChart();
+}
+
 async function fetchActivePipelines() {
   const parentPort = config.parent_api_port || "8000";
   try {
@@ -1238,98 +1358,7 @@ async function fetchActivePipelines() {
     if (response.ok) {
       const rawText = await response.clone().text();
       const data: ChasePipelineProcess[] = await response.json();
-
-      // Register active positions in SessionMetricsTracker ONLY when entry is filled (WAITING_TP_FILL)
-      data.forEach((proc) => {
-        if (proc.status !== 'COMPLETED' && proc.status !== 'ABORTED') {
-          trackedSessionProcessIds.add(proc.id);
-          // Position is only active in exchange if status is WAITING_TP_FILL or has exit_order_id
-          const isPositionOpen = proc.status === 'WAITING_TP_FILL' || Boolean(proc.exit_order_id);
-          const entryPrice = proc.last_order_price || proc.initial_price || 0;
-          if (isPositionOpen && entryPrice > 0) {
-            let procCreatedAt = Date.now();
-            if (proc.created_at) {
-              const rawStr = String(proc.created_at);
-              const isoStr = rawStr.endsWith('Z') ? rawStr : rawStr + 'Z';
-              const parsed = new Date(isoStr).getTime();
-              if (!isNaN(parsed)) procCreatedAt = parsed;
-            }
-            sessionMetrics.registerPosition({
-              processId: proc.id,
-              instanceId: proc.instance_id,
-              symbol: proc.symbol,
-              entryPrice: entryPrice,
-              amount: proc.amount || 0,
-              side: proc.side || 'BUY',
-              createdAt: procCreatedAt
-            });
-          }
-        }
-      });
-
-      // Detect processes that transition to COMPLETED or were recently finished
-      for (const procId of Array.from(trackedSessionProcessIds)) {
-        const proc = data.find(p => p.id === procId);
-        // If process is now COMPLETED or no longer present in active list
-        if (proc && proc.status === 'COMPLETED' && !completedSessionProcessIds.has(procId)) {
-          completedSessionProcessIds.add(procId);
-          trackedSessionProcessIds.delete(procId);
-
-          const pos = sessionMetrics.closePosition(procId);
-          const entryPrice = pos ? pos.entryPrice : (proc.initial_price || proc.last_order_price || 0);
-          const exitPrice = proc.last_tick_price || proc.last_order_price || entryPrice;
-          const amount = pos ? pos.amount : (proc.amount || 1);
-          const side = pos ? pos.side : (proc.side || 'BUY');
-
-          const isLong = side.toUpperCase() === 'BUY' || side.toUpperCase() === 'LONG';
-          const priceDiff = isLong ? (exitPrice - entryPrice) : (entryPrice - exitPrice);
-          const tradePnL = priceDiff * amount;
-
-          // Add to Session Realized PnL for target instance
-          const procInstId = proc.instance_id || (selectedInstanceId !== null ? selectedInstanceId : parseInt(config.instance_id || "1", 10));
-          sessionMetrics.addRealizedPnL(tradePnL, procInstId);
-          addLog(`[SESSION PnL] Process #${procId} (Inst #${procInstId}) COMPLETED. Trade PnL: $${tradePnL.toFixed(4)}`, tradePnL >= 0 ? 'success' : 'warn');
-
-          // Find anchor canvas coordinates for exit or entry marker
-          let anchorX = canvasEl ? canvasEl.width * 0.5 : 200;
-          let anchorY = canvasEl ? canvasEl.height * 0.5 : 150;
-
-          if (proc.exit_order_id) {
-            const foundMarker = activeMarkers.find(m => m.events.some(e => String(e.orderId) === String(proc.exit_order_id)));
-            if (foundMarker) {
-              anchorX = foundMarker.x;
-              anchorY = foundMarker.y;
-            }
-          }
-
-          // Trigger 10-second golden coin animation
-          coinAnimationManager.triggerCoinAnimation(
-            procId,
-            entryPrice,
-            exitPrice,
-            amount,
-            side,
-            anchorX,
-            anchorY
-          );
-        }
-      }
-
-      // Permanently register orderId -> processId relations for lifetime display
-      data.forEach(proc => orderProcessRegistry.registerProcess(proc));
-
-      activeChaseProcesses = data;
-      if (data.length !== lastLoggedProcessCount) {
-        lastLoggedProcessCount = data.length;
-        addLog(`[ACTIVE PIPELINES API] ${data.length} procesos activos recibidos: ${rawText}`, 'info');
-      }
-
-      // Update PnL displays
-      const latestBid = history.length > 0 ? history[history.length - 1].bid : 0;
-      const latestAsk = history.length > 0 ? history[history.length - 1].ask : 0;
-      updatePnLDisplay(latestBid, latestAsk);
-
-      drawChart();
+      processActivePipelinesData(data, rawText);
     }
   } catch (err) {
     console.warn("Failed to fetch active pipeline processes:", err);
@@ -1802,13 +1831,19 @@ window.addEventListener("DOMContentLoaded", async () => {
   connectBinancePublicWs(config.symbol);
   connectWebSocket();
 
-  // Fetch active Chase v2 pipeline processes and set up periodic refresh
+  // Initial snapshot of active processes (real-time updates arrive via WebSocket)
   fetchActivePipelines();
-  setInterval(fetchActivePipelines, 3000);
+  // Low-frequency fallback refresh (every 60s, only if tab is visible)
+  setInterval(() => {
+    if (!document.hidden) {
+      fetchActivePipelines();
+    }
+  }, 60000);
 
-  // Auto-refresh Global Command Center matrix every 60 seconds (60000ms)
+  // Auto-refresh Global Command Center matrix every 60 seconds (only if visible)
   fetchGlobalOverview();
   setInterval(() => {
+    if (document.hidden) return;
     const overviewPage = document.getElementById("global-overview-page");
     if (overviewPage && overviewPage.style.display !== "none") {
       fetchGlobalOverview();
