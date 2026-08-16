@@ -3365,7 +3365,7 @@ function prepareNewInstanceForm() {
       strategy_name: "GRID_POSITION_FLIPPER",
       entry_ttl_seconds: 10,
       bypass_global_guards: false,
-      disable_balance_scaling: false
+      disable_balance_scaling: true
     }
   };
 
