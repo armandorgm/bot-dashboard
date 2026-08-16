@@ -2627,7 +2627,6 @@ function renderInstanceForm(inst: BotInstanceData) {
   const entryTtlEl = document.getElementById("inst-edit-entry-ttl") as HTMLInputElement;
   const bypassEl = document.getElementById("inst-edit-bypass-guards") as HTMLInputElement;
   const disableScaleEl = document.getElementById("inst-edit-disable-scaling") as HTMLInputElement;
-  const enableShadowLedgerEl = document.getElementById("inst-edit-enable-shadow-ledger") as HTMLInputElement;
 
   const rawJsonEl = document.getElementById("inst-edit-raw-json") as HTMLTextAreaElement;
 
@@ -2656,7 +2655,6 @@ function renderInstanceForm(inst: BotInstanceData) {
   if (entryTtlEl) entryTtlEl.value = (params.entry_ttl_seconds ?? 10).toString();
   if (bypassEl) bypassEl.checked = !!params.bypass_global_guards;
   if (disableScaleEl) disableScaleEl.checked = !!params.disable_balance_scaling;
-  if (enableShadowLedgerEl) enableShadowLedgerEl.checked = !!params.enable_shadow_ledger;
 
   applyStrategyModularityUI(stratNameEl?.value || canonicalStrat);
 
@@ -3396,7 +3394,6 @@ async function saveInstanceConfigHot() {
   const entryTtlEl = document.getElementById("inst-edit-entry-ttl") as HTMLInputElement;
   const bypassEl = document.getElementById("inst-edit-bypass-guards") as HTMLInputElement;
   const disableScaleEl = document.getElementById("inst-edit-disable-scaling") as HTMLInputElement;
-  const enableShadowLedgerEl = document.getElementById("inst-edit-enable-shadow-ledger") as HTMLInputElement;
 
   const rawJsonEl = document.getElementById("inst-edit-raw-json") as HTMLTextAreaElement;
 
@@ -3422,7 +3419,6 @@ async function saveInstanceConfigHot() {
   if (entryTtlEl) updatedParams["entry_ttl_seconds"] = parseInt(entryTtlEl.value, 10) || 10;
   if (bypassEl) updatedParams["bypass_global_guards"] = bypassEl.checked;
   if (disableScaleEl) updatedParams["disable_balance_scaling"] = disableScaleEl.checked;
-  if (enableShadowLedgerEl) updatedParams["enable_shadow_ledger"] = enableShadowLedgerEl.checked;
 
   // Schema-Driven Sub-policy and Payload Sanitization (R3: Prohibited sub-policies never transmitted for sealed strategies)
   const manifestEntry = getManifestEntryForStrategy(canonicalStrat);
