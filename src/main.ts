@@ -2673,6 +2673,8 @@ function getInstanceStatusColor(status: string): string {
     case 'IDLE':
     case 'WAITING':
       return '#f59e0b'; // Amarillo / Naranja
+    case 'STASHED':
+      return '#a855f7'; // Violeta / Púrpura
     case 'STOPPED':
     case 'ABORTED':
     case 'ERROR':
@@ -2680,6 +2682,208 @@ function getInstanceStatusColor(status: string): string {
     default:
       return '#9ca3af'; // Gris
   }
+}
+
+let pendingStashInstanceId: number | null = null;
+
+function openStashConfirmModal(instanceId: number, instanceName: string) {
+  pendingStashInstanceId = instanceId;
+  const modal = document.getElementById("stash-confirm-modal");
+  const nameEl = document.getElementById("stash-modal-inst-name");
+  if (nameEl) nameEl.innerText = `#${instanceId} - ${instanceName}`;
+  if (modal) modal.style.display = "flex";
+}
+
+function closeStashConfirmModal() {
+  pendingStashInstanceId = null;
+  const modal = document.getElementById("stash-confirm-modal");
+  if (modal) modal.style.display = "none";
+}
+
+async function executeStash(instanceId: number) {
+  const parentPort = config.parent_api_port || "8000";
+  addLog(`[STASH] Congelando Instancia #${instanceId} y aplanando posición a 0...`, 'info');
+  try {
+    const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${instanceId}/stash`, {
+      method: "POST"
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      addLog(`[STASH ÉXITO] Instancia #${instanceId} congelada. Posición: ${data.position_amount} ${data.position_side} cerrada a 0. Snapshot #${data.snapshot_id}`, 'info');
+      await refreshInstanceModalDropdown();
+      const currentInstId = selectedInstanceId || parseInt(config.instance_id || "1", 10);
+      if (currentInstId === instanceId) {
+        updateInstanceStatusToggleUI("STASHED");
+      }
+      fetchGlobalOverview();
+    } else {
+      addLog(`[STASH ERROR] Fallo al congelar Instancia #${instanceId}: ${data.detail || JSON.stringify(data)}`, 'err');
+    }
+  } catch (err: any) {
+    addLog(`[STASH ERROR] Fallo de conexión: ${err.message}`, 'err');
+  }
+}
+
+async function executePop(instanceId: number, mode: 'NOW' | 'NO_FEES') {
+  const parentPort = config.parent_api_port || "8000";
+  addLog(`[POP] Reanudando Instancia #${instanceId} en modo ${mode}...`, 'info');
+  try {
+    const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${instanceId}/stash/pop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      addLog(`[POP ÉXITO] Instancia #${instanceId} reanudada en modo ${mode}. Entrada: #${data.pop_entry_order_id}. Procesos reconstruidos: ${data.reconstructed_processes_count}`, 'info');
+      await refreshInstanceModalDropdown();
+      const currentInstId = selectedInstanceId || parseInt(config.instance_id || "1", 10);
+      if (currentInstId === instanceId) {
+        updateInstanceStatusToggleUI("ACTIVE");
+      }
+      fetchGlobalOverview();
+    } else {
+      addLog(`[POP ERROR] Fallo al reanudar Instancia #${instanceId}: ${data.detail || JSON.stringify(data)}`, 'err');
+    }
+  } catch (err: any) {
+    addLog(`[POP ERROR] Fallo de conexión: ${err.message}`, 'err');
+  }
+}
+
+function renderHeaderStashAction(status: string, instanceId: number) {
+  const container = document.getElementById("instance-stash-action-container");
+  if (!container) return;
+
+  const upperStatus = (status || "").toUpperCase();
+  const currentInst = loadedInstances.find(i => i.id === instanceId);
+  const instName = currentInst ? currentInst.name : `Bot #${instanceId}`;
+
+  if (upperStatus === "STASHED") {
+    container.innerHTML = `
+      <div class="pop-action-container" id="header-pop-dropdown-wrapper">
+        <div class="btn-pop-group">
+          <button class="btn-pop-main" id="btn-header-pop-now" title="Reanudar inmediatamente a mercado (Taker)">
+            ⚡ Pop NOW
+          </button>
+          <button class="btn-pop-toggle" id="btn-header-pop-toggle" title="Más opciones de reanudación">
+            ▼
+          </button>
+        </div>
+        <div class="pop-dropdown-menu" id="header-pop-menu" style="display: none;">
+          <button class="pop-dropdown-item" id="btn-header-pop-opt-now">
+            <div class="pop-title">
+              <span>⚡ Pop NOW</span>
+              <span class="badge-tag-now">Taker Instant</span>
+            </div>
+            <div class="pop-desc">Entrada inmediata a mercado reconstruyendo grilla por % relativo.</div>
+          </button>
+          <button class="pop-dropdown-item" id="btn-header-pop-opt-nofees">
+            <div class="pop-title">
+              <span>🎯 Pop noFees</span>
+              <span class="badge-tag-nofees">Maker 0% Fee</span>
+            </div>
+            <div class="pop-desc">Entrada pasiva GTX al mejor bid/ask para ahorrar comisión Taker.</div>
+          </button>
+        </div>
+      </div>
+    `;
+
+    const btnPopNow = document.getElementById("btn-header-pop-now");
+    const btnToggle = document.getElementById("btn-header-pop-toggle");
+    const popMenu = document.getElementById("header-pop-menu");
+    const optNow = document.getElementById("btn-header-pop-opt-now");
+    const optNoFees = document.getElementById("btn-header-pop-opt-nofees");
+
+    if (btnPopNow) {
+      btnPopNow.addEventListener("click", () => executePop(instanceId, 'NOW'));
+    }
+
+    if (btnToggle && popMenu) {
+      btnToggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        popMenu.style.display = popMenu.style.display === "none" ? "flex" : "none";
+      });
+      document.addEventListener("click", () => {
+        if (popMenu) popMenu.style.display = "none";
+      });
+    }
+
+    if (optNow) {
+      optNow.addEventListener("click", () => {
+        if (popMenu) popMenu.style.display = "none";
+        executePop(instanceId, 'NOW');
+      });
+    }
+
+    if (optNoFees) {
+      optNoFees.addEventListener("click", () => {
+        if (popMenu) popMenu.style.display = "none";
+        executePop(instanceId, 'NO_FEES');
+      });
+    }
+
+  } else {
+    // ACTIVE, PAUSED, STOPPED
+    container.innerHTML = `
+      <button id="btn-header-stash" class="btn-stash-action" title="Congelar grilla y aplanar posición a 0">
+        📦 STASH
+      </button>
+    `;
+    const btnStash = document.getElementById("btn-header-stash");
+    if (btnStash) {
+      btnStash.addEventListener("click", () => openStashConfirmModal(instanceId, instName));
+    }
+  }
+}
+
+function switchActiveInstance(instanceId: string | number) {
+  const target = loadedInstances.find(inst => String(inst.id) === String(instanceId));
+  if (!target) return;
+
+  addLog(`[HOT-SWAP] Conmutando vista activa a la instancia: ${target.name} (${target.symbol})`, 'info');
+
+  // Actualizar config global de la instancia
+  selectedInstanceId = target.id;
+  config.instance_id = String(target.id);
+  config.symbol = target.symbol;
+  if (target.params && target.params.port) {
+    config.port = String(target.params.port);
+  }
+
+  // Actualizar elementos DOM del Header
+  if (botTitleEl) botTitleEl.innerText = `BOT INSTANCE ${target.name.toUpperCase()}`;
+
+  // Actualizar selector del header y su color si existe
+  const headerSelector = document.getElementById("header-instance-selector") as HTMLSelectElement | null;
+  if (headerSelector) {
+    if (headerSelector.value !== String(target.id)) {
+      headerSelector.value = String(target.id);
+    }
+    headerSelector.style.color = getInstanceStatusColor(target.status);
+  }
+
+  // Limpiar estado visual anterior
+  history = [];
+  hftEvents = [];
+  openOrders = [];
+  activeChaseProcesses = [];
+  sessionMetrics.resetPositions();
+  drawChart();
+
+  // Actualizar el estado visual de status y botón Stash/Pop del header
+  updateInstanceStatusToggleUI(target.status);
+
+  // Reconectar WebSocket público directo de Binance para los ticks del gráfico del nuevo símbolo
+  connectBinancePublicWs(target.symbol);
+
+  // Actualizar el input CYCLE(s) con el valor de la instancia seleccionada
+  if (typeof (window as any)._loadCycleSpeedForInstance === "function") {
+    (window as any)._loadCycleSpeedForInstance(target.id);
+  }
+
+  // Volver a consultar APIs REST para la nueva instancia seleccionada
+  fetchOpenOrders();
+  fetchActivePipelines();
 }
 
 async function refreshInstanceModalDropdown() {
@@ -2727,54 +2931,8 @@ async function refreshInstanceModalDropdown() {
     selectedInstanceId = match.id;
     if (selectDropdown) selectDropdown.value = match.id.toString();
     renderInstanceForm(match);
+    updateInstanceStatusToggleUI(match.status);
   }
-}
-
-function switchActiveInstance(instanceId: string | number) {
-  const target = loadedInstances.find(inst => String(inst.id) === String(instanceId));
-  if (!target) return;
-
-  addLog(`[HOT-SWAP] Conmutando vista activa a la instancia: ${target.name} (${target.symbol})`, 'info');
-
-  // Actualizar config global de la instancia
-  selectedInstanceId = target.id;
-  config.instance_id = String(target.id);
-  config.symbol = target.symbol;
-  if (target.params && target.params.port) {
-    config.port = String(target.params.port);
-  }
-
-  // Actualizar elementos DOM del Header
-  if (botTitleEl) botTitleEl.innerText = `BOT INSTANCE ${target.name.toUpperCase()}`;
-
-  // Actualizar selector del header y su color si existe
-  const headerSelector = document.getElementById("header-instance-selector") as HTMLSelectElement | null;
-  if (headerSelector) {
-    if (headerSelector.value !== String(target.id)) {
-      headerSelector.value = String(target.id);
-    }
-    headerSelector.style.color = getInstanceStatusColor(target.status);
-  }
-
-  // Limpiar estado visual anterior
-  history = [];
-  hftEvents = [];
-  openOrders = [];
-  activeChaseProcesses = [];
-  sessionMetrics.resetPositions();
-  drawChart();
-
-  // Reconectar WebSocket público directo de Binance para los ticks del gráfico del nuevo símbolo
-  connectBinancePublicWs(target.symbol);
-
-  // Actualizar el input CYCLE(s) con el valor de la instancia seleccionada
-  if (typeof (window as any)._loadCycleSpeedForInstance === "function") {
-    (window as any)._loadCycleSpeedForInstance(target.id);
-  }
-
-  // Volver a consultar APIs REST para la nueva instancia seleccionada
-  fetchOpenOrders();
-  fetchActivePipelines();
 }
 
 function updateInstanceStatusToggleUI(status: string) {
@@ -2797,6 +2955,11 @@ function updateInstanceStatusToggleUI(status: string) {
     toggleBadge.style.border = "1px solid #f59e0b";
     toggleBadge.style.background = "rgba(245, 158, 11, 0.15)";
     statusText.style.color = "#f59e0b";
+  } else if (upperStatus === "STASHED") {
+    statusLed.className = "led led-purple";
+    toggleBadge.style.border = "1px solid #a855f7";
+    toggleBadge.style.background = "rgba(168, 85, 247, 0.15)";
+    statusText.style.color = "#c084fc";
   } else {
     // STOPPED / INACTIVE
     statusLed.className = "led led-red";
@@ -2804,12 +2967,20 @@ function updateInstanceStatusToggleUI(status: string) {
     toggleBadge.style.background = "rgba(239, 68, 68, 0.15)";
     statusText.style.color = "#ef4444";
   }
+
+  const currentInstId = selectedInstanceId || parseInt(config.instance_id || "1", 10);
+  renderHeaderStashAction(upperStatus, currentInstId);
 }
 
 async function toggleInstanceStatus() {
   const currentInstId = selectedInstanceId || parseInt(config.instance_id || "1", 10);
   const currentInst = loadedInstances.find(i => i.id === currentInstId);
   const currentStatus = currentInst ? currentInst.status.toUpperCase() : "ACTIVE";
+
+  if (currentStatus === "STASHED") {
+    addLog(`[INSTANCE STATUS] La instancia #${currentInstId} está en STASH. Usa el botón Pop para reanudar.`, "warn");
+    return;
+  }
 
   // Toggle exclusively between ACTIVE and PAUSED
   const newStatus = currentStatus === "ACTIVE" ? "PAUSED" : "ACTIVE";
@@ -3096,9 +3267,23 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
           $${inst.allocated_capital} / <span style="color: #6366f1;">$${inst.used_capital.toFixed(2)}</span>
         </td>
         <td style="padding: 14px 16px; text-align: center;">
-          <button class="btn-monitor-instance" data-id="${inst.id}" style="background: #3b82f6; color: #ffffff; border: none; border-radius: 4px; padding: 4px 10px; font-family: inherit; font-size: 11px; font-weight: bold; cursor: pointer; transition: transform 0.1s ease;" title="Monitorear esta instancia en el Dashboard">
-            📊 MONITOREAR →
-          </button>
+          <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <button class="btn-monitor-instance" data-id="${inst.id}" style="background: #3b82f6; color: #ffffff; border: none; border-radius: 4px; padding: 4px 8px; font-family: inherit; font-size: 10px; font-weight: bold; cursor: pointer; transition: transform 0.1s ease;" title="Monitorear esta instancia en el Dashboard">
+              📊 VER
+            </button>
+            ${inst.status.toUpperCase() === 'STASHED' ? `
+              <button class="btn-matrix-pop-now" data-id="${inst.id}" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid #a855f7; border-radius: 4px; padding: 4px 6px; font-family: inherit; font-size: 10px; font-weight: bold; cursor: pointer;" title="Reanudar Pop NOW (Taker Instant)">
+                ⚡ NOW
+              </button>
+              <button class="btn-matrix-pop-nofees" data-id="${inst.id}" style="background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981; border-radius: 4px; padding: 4px 6px; font-family: inherit; font-size: 10px; font-weight: bold; cursor: pointer;" title="Reanudar Pop noFees (Maker Post-Only)">
+                🎯 noFees
+              </button>
+            ` : `
+              <button class="btn-matrix-stash" data-id="${inst.id}" data-name="${inst.name}" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid #f59e0b; border-radius: 4px; padding: 4px 6px; font-family: inherit; font-size: 10px; font-weight: bold; cursor: pointer;" title="Congelar grilla y aplanar posición a 0">
+                📦 STASH
+              </button>
+            `}
+          </div>
         </td>
       </tr>
     `;
@@ -3112,6 +3297,40 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
       if (instId) {
         switchActiveInstance(instId);
         setViewMode('dashboard');
+      }
+    });
+  });
+
+  // Attach click listeners to matrix Stash buttons
+  document.querySelectorAll(".btn-matrix-stash").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const targetBtn = e.currentTarget as HTMLButtonElement;
+      const instId = targetBtn.getAttribute("data-id");
+      const instName = targetBtn.getAttribute("data-name") || "Instancia";
+      if (instId) {
+        openStashConfirmModal(parseInt(instId, 10), instName);
+      }
+    });
+  });
+
+  // Attach click listeners to matrix Pop NOW buttons
+  document.querySelectorAll(".btn-matrix-pop-now").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const targetBtn = e.currentTarget as HTMLButtonElement;
+      const instId = targetBtn.getAttribute("data-id");
+      if (instId) {
+        executePop(parseInt(instId, 10), 'NOW');
+      }
+    });
+  });
+
+  // Attach click listeners to matrix Pop noFees buttons
+  document.querySelectorAll(".btn-matrix-pop-nofees").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const targetBtn = e.currentTarget as HTMLButtonElement;
+      const instId = targetBtn.getAttribute("data-id");
+      if (instId) {
+        executePop(parseInt(instId, 10), 'NO_FEES');
       }
     });
   });
@@ -3365,6 +3584,31 @@ function initInstanceModalListeners() {
 
   if (saveBtn) {
     saveBtn.addEventListener("click", () => saveInstanceConfigHot());
+  }
+
+  // Bind Stash Confirmation Modal Listeners
+  const cancelStashModalBtn = document.getElementById("btn-cancel-stash-modal");
+  const confirmStashModalBtn = document.getElementById("btn-confirm-stash-modal");
+  const stashModalOverlay = document.getElementById("stash-confirm-modal");
+
+  if (cancelStashModalBtn) {
+    cancelStashModalBtn.addEventListener("click", () => closeStashConfirmModal());
+  }
+
+  if (stashModalOverlay) {
+    stashModalOverlay.addEventListener("click", (e) => {
+      if (e.target === stashModalOverlay) closeStashConfirmModal();
+    });
+  }
+
+  if (confirmStashModalBtn) {
+    confirmStashModalBtn.addEventListener("click", async () => {
+      if (pendingStashInstanceId !== null) {
+        const idToStash = pendingStashInstanceId;
+        closeStashConfirmModal();
+        await executeStash(idToStash);
+      }
+    });
   }
 
   // Pre-cargar manifest e instancias al iniciar la aplicación

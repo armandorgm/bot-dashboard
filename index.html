@@ -22,6 +22,14 @@
             <span class="led led-red" id="instance-status-led"></span>
             <span id="instance-status-text" style="font-weight: bold;">STOPPED</span>
           </div>
+
+          <!-- DYNAMIC STASH & POP ACTION CONTAINER -->
+          <div id="instance-stash-action-container" style="display: flex; align-items: center;">
+            <button id="btn-header-stash" class="btn-stash-action" title="Congelar grilla y aplanar posición a 0">
+              📦 STASH
+            </button>
+          </div>
+
           <div style="display: flex; align-items: center; gap: 6px; margin-left: 12px; background: #111827; padding: 2px 8px; border-radius: 6px; border: 1px solid #374151;">
             <span style="font-size: 11px; color: #9ca3af; font-family: 'JetBrains Mono', monospace; font-weight: bold;">BOT:</span>
             <select id="header-instance-selector" style="background: transparent; color: #10b981; border: none; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: bold; outline: none; cursor: pointer;">
@@ -730,5 +738,51 @@
       </div> <!-- End #instance-dashboard-page -->
 
     </main>
+
+    <!-- STASH CONFIRMATION MODAL (ANTI-MISCLICK GUARD) -->
+    <div id="stash-confirm-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-dialog">
+        <div style="display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #374151; padding-bottom: 12px;">
+          <span style="font-size: 20px;">📦</span>
+          <div>
+            <h3 style="margin: 0; font-size: 15px; font-weight: bold; color: #f59e0b;">CONFIRMAR STASH SEGURO</h3>
+            <span style="font-size: 11px; color: #9ca3af;">Congelar grilla y aplanar exposición a cero</span>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px; font-size: 12px; color: #d1d5db; line-height: 1.4;">
+          <p id="stash-modal-description" style="margin: 0;">
+            ¿Estás seguro de pausar y congelar la instancia?
+          </p>
+          <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid #1f2937; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: #9ca3af;">Instancia:</span>
+              <span id="stash-modal-inst-name" style="font-weight: bold; color: #f8fafc;">#--</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: #9ca3af;">Acción en Exchange:</span>
+              <span style="font-weight: bold; color: #ef4444;">MARKET + reduceOnly</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: #9ca3af;">Órdenes en Libro:</span>
+              <span style="font-weight: bold; color: #f59e0b;">Cancelación Total</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: #9ca3af;">Memoria de Grilla:</span>
+              <span style="font-weight: bold; color: #10b981;">Preservada (% relativo)</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px;">
+          <button id="btn-cancel-stash-modal" style="background: #1f2937; color: #d1d5db; border: 1px solid #374151; border-radius: 6px; padding: 6px 14px; font-family: inherit; font-size: 11px; font-weight: bold; cursor: pointer;">
+            Cancelar
+          </button>
+          <button id="btn-confirm-stash-modal" style="background: #f59e0b; color: #000000; border: none; border-radius: 6px; padding: 6px 16px; font-family: inherit; font-size: 11px; font-weight: bold; cursor: pointer; box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);">
+            Confirmar Stash
+          </button>
+        </div>
+      </div>
+    </div>
   </body>
 </html>

@@ -1213,3 +1213,200 @@ body {
   transition: all 0.25s ease;
 }
 
+/* ── STASH & POP UI DESIGN SYSTEM ────────────────────────────────────────── */
+
+.led-yellow {
+  background-color: #f59e0b;
+  box-shadow: 0 0 8px #f59e0b;
+}
+
+.led-purple {
+  background-color: #a855f7;
+  box-shadow: 0 0 8px #a855f7;
+}
+
+/* Botón Stash Header */
+.btn-stash-action {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid #f59e0b;
+  color: #f59e0b;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease-in-out;
+  user-select: none;
+}
+
+.btn-stash-action:hover {
+  background: #f59e0b;
+  color: #000000;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+}
+
+.btn-stash-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Grupo Botón Pop Header */
+.pop-action-container {
+  position: relative;
+  display: inline-flex;
+}
+
+.btn-pop-group {
+  display: inline-flex;
+  border: 1px solid #a855f7;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.25);
+}
+
+.btn-pop-main {
+  background: rgba(168, 85, 247, 0.2);
+  color: #c084fc;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+
+.btn-pop-main:hover {
+  background: #a855f7;
+  color: #ffffff;
+}
+
+.btn-pop-toggle {
+  background: rgba(168, 85, 247, 0.3);
+  color: #c084fc;
+  border: none;
+  border-left: 1px solid rgba(168, 85, 247, 0.4);
+  padding: 4px 6px;
+  cursor: pointer;
+  font-size: 10px;
+  transition: all 0.15s ease;
+}
+
+.btn-pop-toggle:hover {
+  background: #a855f7;
+  color: #ffffff;
+}
+
+/* Dropdown Menú Pop Options */
+.pop-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.8), 0 0 15px rgba(168, 85, 247, 0.2);
+  padding: 6px;
+  min-width: 230px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  backdrop-filter: blur(12px);
+}
+
+.pop-dropdown-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #f3f4f6;
+  font-family: var(--font-mono);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pop-dropdown-item:hover {
+  background: rgba(168, 85, 247, 0.15);
+  border-color: rgba(168, 85, 247, 0.4);
+}
+
+.pop-dropdown-item .pop-title {
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pop-dropdown-item .pop-desc {
+  font-size: 9.5px;
+  color: #9ca3af;
+  line-height: 1.3;
+}
+
+.badge-tag-now {
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.badge-tag-nofees {
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+/* Modal de Confirmación Stash Anti-Misclick */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.modal-dialog {
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 440px;
+  width: 90%;
+  box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.8), 0 0 20px rgba(245, 158, 11, 0.15);
+  font-family: var(--font-mono);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+
