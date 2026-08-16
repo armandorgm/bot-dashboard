@@ -1,0 +1,148 @@
+export interface InstanceConfig {
+  instance_id: string;
+  symbol: string;
+  port: string;
+  parent_api_port: string;
+}
+
+export interface TickData {
+  time: number;
+  bid: number;
+  ask: number;
+}
+
+export interface HftEvent {
+  e: 'HFT_EVENT';
+  type: 'buy' | 'sell' | 'cancel' | 'query' | 'buy_placed' | 'sell_placed' | 'cancel_failed' | 'cancel_buy' | 'cancel_sell' | 'cancel_buy_failed' | 'cancel_sell_failed';
+  time: number;
+  price?: number;
+  qty?: number;
+  symbol: string;
+  orderId?: string;
+  detail: string;
+}
+
+export interface VisualMarker {
+  x: number;
+  y: number;
+  events: HftEvent[];
+}
+
+export interface ChasePipelineProcess {
+  id: number;
+  pipeline_id: number;
+  instance_id?: number;
+  symbol: string;
+  entry_order_id?: string;
+  exit_order_id?: string;
+  status: 'CHASING' | 'WAITING_FILL' | 'PLACING_TP' | 'COMPLETED' | 'ABORTED' | string;
+  sub_status: string;
+  initial_price?: number;
+  last_tick_price?: number;
+  last_order_price?: number;
+  side: string;
+  amount: number;
+  created_at?: string;
+  finished_at?: string;
+}
+
+export interface OpenOrder {
+  id: string;
+  symbol: string;
+  type: string;
+  side: string;
+  price: number;
+  amount: number;
+  filled: number;
+  remaining: number;
+  status: string;
+  datetime: string;
+}
+
+export interface ModificationInfo {
+  timestamp: number;
+  order_id: string;
+  side: string;
+  quantity: number;
+  old_price: number | null;
+  new_price: number | null;
+}
+
+export interface InstanceTelemetry {
+  name: string;
+  symbol: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'PAUSED' | 'STOPPED' | string;
+  strategy_type: string;
+  chase_behavior: 'flat' | 'fibonacci' | string;
+  allocated_capital: number;
+  used_capital: number;
+  available_capital: number;
+  open_processes_count?: number;
+  total_open_orders?: number;
+  realized_pnl?: number;
+  unrealized_pnl?: number;
+}
+
+export type AllInstancesTelemetryResponse = Record<string | number, InstanceTelemetry>;
+
+export interface BotInstanceData {
+  id: number;
+  name: string;
+  symbol: string;
+  strategy_type: string;
+  allocated_capital: number;
+  used_capital?: number;
+  lifetime_pnl?: number;
+  created_at?: string;
+  status: string;
+  params: Record<string, any>;
+}
+
+export interface StrategyManifestItem {
+  class?: string;
+  modularity: 'SEALED' | 'COMPOSABLE' | string;
+  allowed_slots: string[];
+  allowed_types?: Record<string, string[]>;
+  description?: string;
+}
+
+export interface StrategiesManifest {
+  description?: string;
+  definitions?: {
+    modularity_modes: string[];
+  };
+  strategies: Record<string, StrategyManifestItem>;
+}
+
+export interface GlobalOverviewResponse {
+  status: string;
+  portfolio_summary: {
+    total_lifetime_pnl: number;
+    total_session_pnl?: number;
+    total_unrealized_pnl?: number;
+    total_session_unrealized_pnl?: number;
+    total_trades: number;
+    total_instances: number;
+    active_instances: number;
+  };
+  instances: Array<{
+    id: number;
+    name: string;
+    symbol: string;
+    strategy_type: string;
+    status: string;
+    allocated_capital: number;
+    used_capital: number;
+    lifetime_pnl: number;
+    session_pnl?: number | null;
+    unrealized_pnl?: number;
+    session_unrealized_pnl?: number | null;
+    total_trades: number;
+    session_trades?: number | null;
+    session_start_time?: string | null;
+    winning_trades: number;
+    win_rate_pc: number;
+    traded_volume: number;
+    created_at: string;
+  }>;
+}

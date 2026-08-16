@@ -138,20 +138,20 @@
                 <tr style="background: #161b22; color: #9ca3af; border-bottom: 1px solid #1f2937;">
                   <th style="padding: 12px 16px;">BOT INSTANCE</th>
                   <th style="padding: 12px 16px;">ESTADO</th>
-                  <th style="padding: 12px 16px; text-align: right;">PnL (LIFETIME / SESSION)</th>
-                  <th style="padding: 12px 16px; text-align: right;">UNREALIZED (LIFETIME / SESSION)</th>
-                  <th style="padding: 12px 16px; text-align: right; background: rgba(59, 130, 246, 0.08); color: #60a5fa;">NET TOTAL (LIFETIME / SESSION)</th>
-                  <th style="padding: 12px 16px; text-align: right;">TRADES (LIFETIME / SESSION)</th>
-                  <th style="padding: 12px 16px; text-align: right;">TRADES/H (LIFETIME / SESSION)</th>
+                  <th style="padding: 12px 16px; text-align: right;">PnL (SESSION / LIFETIME)</th>
+                  <th style="padding: 12px 16px; text-align: right;">UNREALIZED (SESSION / LIFETIME)</th>
+                  <th style="padding: 12px 16px; text-align: right; background: rgba(59, 130, 246, 0.08); color: #60a5fa;">NET TOTAL (SESSION / LIFETIME)</th>
+                  <th style="padding: 12px 16px; text-align: right;">TRADES (SESSION / LIFETIME)</th>
+                  <th style="padding: 12px 16px; text-align: right;">TRADES/H (SESSION / LIFETIME)</th>
                   <th style="padding: 12px 16px; text-align: right;">WIN RATE</th>
                   <th style="padding: 12px 16px; text-align: right;">VOLUMEN ($)</th>
-                  <th style="padding: 12px 16px; text-align: right;">CAPITAL (ASIG/USADO)</th>
+                  <th style="padding: 12px 16px; text-align: right;">CAPITAL (USADO / ASIG)</th>
                   <th style="padding: 12px 16px; text-align: center;">ACCIÓN</th>
                 </tr>
               </thead>
               <tbody id="overview-instances-tbody">
                 <tr>
-                  <td colspan="9" style="padding: 24px; text-align: center; color: #64748b;">Cargando matriz global de instancias...</td>
+                  <td colspan="11" style="padding: 24px; text-align: center; color: #64748b;">Cargando matriz global de instancias...</td>
                 </tr>
               </tbody>
             </table>
@@ -417,7 +417,28 @@
           </div>
         </div>
 
-        <!-- 2. REALIZED PnL -->
+        <!-- 2. USED / ALLOCATED CAPITAL -->
+        <div class="diagonal-card used-capital-card" style="border-color: rgba(168, 85, 247, 0.35);">
+          <div class="diagonal-card-header">
+            <span class="diagonal-card-title" style="color: #c084fc;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #c084fc;"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 15h0M2 9.5h20"/></svg>
+              CAPITAL
+            </span>
+            <span class="diagonal-card-subhead" id="instance-avail-cap-val" style="color: #a855f7;" title="Capital Remanente Disponible">Avail: $0.00</span>
+          </div>
+          <div class="diagonal-card-body">
+            <div class="diagonal-top-left">
+              <span class="val-primary" id="instance-used-cap-val" style="color: #c084fc;">$0.00</span>
+              <span class="lbl-primary">Usado</span>
+            </div>
+            <div class="diagonal-bottom-right">
+              <span class="card-price val-secondary" id="instance-alloc-cap-val" style="color: #e9d5ff;" title="Capital Asignado Total">$0.00</span>
+              <span class="lbl-secondary">Asignado</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. REALIZED PnL -->
         <div class="diagonal-card session-pnl-card">
           <div class="diagonal-card-header">
             <span class="diagonal-card-title">

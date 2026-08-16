@@ -154,6 +154,9 @@ let tradesCountValEl: HTMLElement | null = null;
 let sessionTradesRateValEl: HTMLElement | null = null;
 let instanceTotalTradesRateValEl: HTMLElement | null = null;
 let tradesRateValEl: HTMLElement | null = null;
+let instanceUsedCapValEl: HTMLElement | null = null;
+let instanceAllocCapValEl: HTMLElement | null = null;
+let instanceAvailCapValEl: HTMLElement | null = null;
 const sessionStartTimeMap = new Map<number, number>();
 
 let canvasEl: HTMLCanvasElement | null = null;
@@ -1009,6 +1012,13 @@ function connectWebSocket() {
         const latestAsk = history.length > 0 ? history[history.length - 1].ask : 0;
         updatePnLDisplay(latestBid, latestAsk);
       }
+      else if ((payload.type === 'instance_telemetry' || payload.type === 'INSTANCE_TELEMETRY' || payload.event === 'INSTANCE_TELEMETRY') && payload.data) {
+        const d = payload.data;
+        const currentTargetId = selectedInstanceId !== null ? selectedInstanceId : parseInt(config.instance_id || "1", 10);
+        if (d.instance_id === undefined || String(d.instance_id) === String(currentTargetId)) {
+          updateInstanceCapitalDisplay(d.used_capital, d.allocated_capital, d.available_capital);
+        }
+      }
       else if (payload.type === 'query_log' && payload.data) {
         const d = payload.data;
         const isCancelQuery = d.method.toUpperCase().includes("DELETE /FAPI/V1/ORDER") || d.method.toLowerCase().includes("cancel_order");
@@ -1441,6 +1451,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   sessionTradesRateValEl = document.getElementById("session-trades-rate-val");
   instanceTotalTradesRateValEl = document.getElementById("instance-total-trades-rate-val");
   tradesRateValEl = document.getElementById("trades-rate-val");
+  instanceUsedCapValEl = document.getElementById("instance-used-cap-val");
+  instanceAllocCapValEl = document.getElementById("instance-alloc-cap-val");
+  instanceAvailCapValEl = document.getElementById("instance-avail-cap-val");
 
   canvasEl = document.getElementById("hft-chart") as HTMLCanvasElement;
   modsListEl = document.getElementById("mods-list");
@@ -1833,10 +1846,12 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // Initial snapshot of active processes (real-time updates arrive via WebSocket)
   fetchActivePipelines();
+  fetchInstanceTelemetry();
   // Low-frequency fallback refresh (every 60s, only if tab is visible)
   setInterval(() => {
     if (!document.hidden) {
       fetchActivePipelines();
+      fetchInstanceTelemetry();
     }
   }, 60000);
 
@@ -2173,6 +2188,83 @@ function updatePnLDisplay(currentBid: number, currentAsk: number) {
   }
   if (tradesRateValEl) {
     tradesRateValEl.innerText = `${sessTradesPerHour.toFixed(1)} / ${totalTradesPerHour.toFixed(1)}`;
+  }
+}
+
+// ── Instance Telemetry & Used Capital Manager ─────────────────────────────
+
+export interface InstanceTelemetry {
+  name: string;
+  symbol: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'PAUSED' | 'STOPPED' | string;
+  strategy_type: string;
+  chase_behavior: 'flat' | 'fibonacci' | string;
+  allocated_capital: number;
+  used_capital: number;
+  available_capital: number;
+  open_processes_count?: number;
+  total_open_orders?: number;
+  realized_pnl?: number;
+  unrealized_pnl?: number;
+}
+
+export type AllInstancesTelemetryResponse = Record<string | number, InstanceTelemetry>;
+
+function updateInstanceCapitalDisplay(usedCapital: number, allocatedCapital: number, availableCapital?: number) {
+  const used = Math.max(0, usedCapital || 0);
+  const alloc = Math.max(0, allocatedCapital || 0);
+  const avail = availableCapital !== undefined ? availableCapital : Math.max(0, alloc - used);
+
+  if (instanceUsedCapValEl) {
+    instanceUsedCapValEl.innerText = `$${used.toFixed(2)}`;
+    // Highlight if capital usage exceeds 80% of allocation
+    if (alloc > 0 && used / alloc >= 0.8) {
+      instanceUsedCapValEl.style.color = '#f59e0b';
+    } else if (alloc > 0 && used / alloc >= 0.95) {
+      instanceUsedCapValEl.style.color = '#ef4444';
+    } else {
+      instanceUsedCapValEl.style.color = '#c084fc';
+    }
+  }
+
+  if (instanceAllocCapValEl) {
+    instanceAllocCapValEl.innerText = `$${alloc.toFixed(2)}`;
+  }
+
+  if (instanceAvailCapValEl) {
+    instanceAvailCapValEl.innerText = `Avail: $${avail.toFixed(2)}`;
+  }
+}
+
+async function fetchInstanceTelemetry(instanceId?: number | string) {
+  const parentPort = config?.parent_api_port || "8000";
+  const targetId = instanceId !== undefined && instanceId !== null ? instanceId : (selectedInstanceId !== null ? selectedInstanceId : parseInt(config.instance_id || "1", 10));
+
+  try {
+    const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${targetId}/telemetry`);
+    if (res.ok) {
+      const telemetry: InstanceTelemetry = await res.json();
+      if (telemetry) {
+        updateInstanceCapitalDisplay(
+          telemetry.used_capital,
+          telemetry.allocated_capital,
+          telemetry.available_capital
+        );
+        return telemetry;
+      }
+    } else {
+      // Fallback: lookup in loadedInstances cache if single telemetry endpoint not reachable
+      const match = loadedInstances.find(i => String(i.id) === String(targetId));
+      if (match) {
+        updateInstanceCapitalDisplay(match.used_capital || 0, match.allocated_capital || 0);
+      }
+    }
+  } catch (err) {
+    // Graceful fallback to local loaded instances cache
+    const match = loadedInstances.find(i => String(i.id) === String(targetId));
+    if (match) {
+      updateInstanceCapitalDisplay(match.used_capital || 0, match.allocated_capital || 0);
+    }
   }
 }
 
@@ -2882,6 +2974,7 @@ function switchActiveInstance(instanceId: string | number) {
   // Volver a consultar APIs REST para la nueva instancia seleccionada
   fetchOpenOrders();
   fetchActivePipelines();
+  fetchInstanceTelemetry(target.id);
 }
 
 async function refreshInstanceModalDropdown() {
@@ -3070,15 +3163,42 @@ async function fetchGlobalOverview() {
   const parentPort = config.parent_api_port || "8000";
   const tbody = document.getElementById("overview-instances-tbody");
   try {
-    const response = await fetch(`http://127.0.0.1:${parentPort}/api/instances/overview`);
-    if (response.ok) {
-      const data: GlobalOverviewResponse = await response.json();
+    const [overviewRes, telemetryRes] = await Promise.allSettled([
+      fetch(`http://127.0.0.1:${parentPort}/api/instances/overview`),
+      fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/telemetry`)
+    ]);
+
+    if (overviewRes.status === "fulfilled" && overviewRes.value.ok) {
+      const data: GlobalOverviewResponse = await overviewRes.value.json();
+
+      // Hydrate each instance row with real-time telemetry if available
+      if (telemetryRes.status === "fulfilled" && telemetryRes.value.ok) {
+        try {
+          const telemetryMap: AllInstancesTelemetryResponse = await telemetryRes.value.json();
+          if (telemetryMap && typeof telemetryMap === "object") {
+            data.instances = data.instances.map(inst => {
+              const liveTele = telemetryMap[inst.id] || telemetryMap[String(inst.id)];
+              if (liveTele) {
+                return {
+                  ...inst,
+                  used_capital: typeof liveTele.used_capital === "number" ? liveTele.used_capital : inst.used_capital,
+                  allocated_capital: typeof liveTele.allocated_capital === "number" ? liveTele.allocated_capital : inst.allocated_capital,
+                  unrealized_pnl: typeof liveTele.unrealized_pnl === "number" ? liveTele.unrealized_pnl : inst.unrealized_pnl,
+                  status: liveTele.status || inst.status
+                };
+              }
+              return inst;
+            });
+          }
+        } catch (_) {}
+      }
+
       renderGlobalOverview(data);
     } else {
-      if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="padding: 24px; text-align: center; color: #ef4444;">Error al cargar la matriz de instancias (HTTP ${response.status})</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="padding: 24px; text-align: center; color: #ef4444;">Error al cargar la matriz de instancias</td></tr>`;
     }
   } catch (err) {
-    if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="padding: 24px; text-align: center; color: #ef4444;">Fallo de conexión al backend maestro</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="padding: 24px; text-align: center; color: #ef4444;">Fallo de conexión al backend maestro</td></tr>`;
   }
 }
 
@@ -3185,7 +3305,6 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
           </span>
         </td>
         <td style="padding: 14px 16px; text-align: right;">
-          <div style="font-weight: bold; color: ${pnlColor};">$${pnlSign}${inst.lifetime_pnl.toFixed(4)}</div>
           ${inst.session_pnl !== undefined && inst.session_pnl !== null ? `
             <div style="font-size: 11px; color: ${inst.session_pnl > 0 ? '#10b981' : inst.session_pnl < 0 ? '#ef4444' : '#94a3b8'};">
               Sess: $${inst.session_pnl > 0 ? '+' : ''}${inst.session_pnl.toFixed(4)}
@@ -3193,11 +3312,9 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
           ` : `
             <div style="font-size: 10px; color: #475569; font-style: italic;">Sess: N/A</div>
           `}
+          <div style="font-weight: bold; font-size: 13px; color: ${pnlColor}; margin-top: 2px;">$${pnlSign}${inst.lifetime_pnl.toFixed(4)}</div>
         </td>
         <td style="padding: 14px 16px; text-align: right;">
-          <div style="font-weight: bold; color: ${(inst.unrealized_pnl || 0) > 0 ? '#10b981' : (inst.unrealized_pnl || 0) < 0 ? '#ef4444' : '#64748b'};">
-            $${(inst.unrealized_pnl || 0) > 0 ? '+' : ''}${(inst.unrealized_pnl || 0).toFixed(4)}
-          </div>
           ${inst.session_unrealized_pnl !== undefined && inst.session_unrealized_pnl !== null ? `
             <div style="font-size: 11px; color: ${inst.session_unrealized_pnl > 0 ? '#10b981' : inst.session_unrealized_pnl < 0 ? '#ef4444' : '#06b6d4'};">
               Sess: $${inst.session_unrealized_pnl > 0 ? '+' : ''}${inst.session_unrealized_pnl.toFixed(4)}
@@ -3205,6 +3322,9 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
           ` : `
             <div style="font-size: 10px; color: #475569; font-style: italic;">Sess: N/A</div>
           `}
+          <div style="font-weight: bold; font-size: 13px; color: ${(inst.unrealized_pnl || 0) > 0 ? '#10b981' : (inst.unrealized_pnl || 0) < 0 ? '#ef4444' : '#64748b'}; margin-top: 2px;">
+            $${(inst.unrealized_pnl || 0) > 0 ? '+' : ''}${(inst.unrealized_pnl || 0).toFixed(4)}
+          </div>
         </td>
         <td style="padding: 14px 16px; text-align: right; background: rgba(59, 130, 246, 0.04);">
           ${(() => {
@@ -3221,18 +3341,18 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
             }
 
             return `
-              <div style="font-weight: bold; color: ${netColor};">$${netSign}${lifetimeNet.toFixed(4)}</div>
               ${sessNetStr}
+              <div style="font-weight: bold; font-size: 13px; color: ${netColor}; margin-top: 2px;">$${netSign}${lifetimeNet.toFixed(4)}</div>
             `;
           })()}
         </td>
         <td style="padding: 14px 16px; text-align: right;">
-          <div style="font-weight: bold; color: #3b82f6;">${inst.total_trades}</div>
           ${inst.session_trades !== undefined && inst.session_trades !== null ? `
             <div style="font-size: 11px; color: #94a3b8;">Sess: ${inst.session_trades}</div>
           ` : `
             <div style="font-size: 10px; color: #475569; font-style: italic;">Sess: N/A</div>
           `}
+          <div style="font-weight: bold; font-size: 13px; color: #3b82f6; margin-top: 2px;">${inst.total_trades}</div>
         </td>
         <td style="padding: 14px 16px; text-align: right;">
           ${(() => {
@@ -3248,10 +3368,10 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
             }
 
             return `
-              <div style="font-weight: bold; color: #8b5cf6;">${totalTradesPerHour} /h</div>
               <div style="font-size: 11px; color: ${sessionTradesPerHour !== "N/A" ? "#c084fc" : "#475569"};">
                 ${sessionTradesPerHour !== "N/A" ? `Sess: ${sessionTradesPerHour} /h` : "Sess: N/A"}
               </div>
+              <div style="font-weight: bold; font-size: 13px; color: #8b5cf6; margin-top: 2px;">${totalTradesPerHour} /h</div>
             `;
           })()}
         </td>
@@ -3261,8 +3381,21 @@ function renderGlobalOverview(data: GlobalOverviewResponse) {
         <td style="padding: 14px 16px; text-align: right; color: #cbd5e1;">
           $${inst.traded_volume.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </td>
-        <td style="padding: 14px 16px; text-align: right; color: #94a3b8;">
-          $${inst.allocated_capital} / <span style="color: #6366f1;">$${inst.used_capital.toFixed(2)}</span>
+        <td style="padding: 14px 16px; text-align: right; font-family: var(--font-mono);">
+          ${(() => {
+            const alloc = Math.max(0, inst.allocated_capital || 0);
+            const used = Math.max(0, inst.used_capital || 0);
+            const usagePc = alloc > 0 ? (used / alloc) * 100 : 0;
+            const usedColor = usagePc >= 95 ? '#ef4444' : usagePc >= 80 ? '#f59e0b' : '#c084fc';
+            return `
+              <div style="font-size: 11px; color: ${usedColor};">
+                Usado: <span style="font-weight: bold;">$${used.toFixed(2)}</span> (${usagePc.toFixed(0)}%)
+              </div>
+              <div style="font-weight: bold; font-size: 13px; color: #f1f5f9; margin-top: 2px;">
+                Asig: $${alloc.toFixed(2)}
+              </div>
+            `;
+          })()}
         </td>
         <td style="padding: 14px 16px; text-align: center;">
           <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">

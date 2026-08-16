@@ -287,7 +287,7 @@ body {
   flex: 1;
 }
 
-/* Top-Left Section: Session Metric (Larger) */
+/* Top-Left Section: Session / Usado Metric (Secondary / Smaller) */
 .diagonal-top-left {
   display: flex;
   flex-direction: column;
@@ -298,23 +298,23 @@ body {
 
 .diagonal-top-left .val-primary {
   font-family: var(--font-mono);
-  font-size: 1.25rem;
-  font-weight: 800;
-  line-height: 1.05;
-  letter-spacing: -0.02em;
+  font-size: 0.90rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
 }
 
 .diagonal-top-left .lbl-primary {
-  font-size: 0.58rem;
+  font-size: 0.55rem;
   font-family: var(--font-mono);
   color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 700;
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
-/* Bottom-Right Section: Lifetime / Total Metric (Smaller) */
+/* Bottom-Right Section: Lifetime / Total / Asignado Metric (Primary / Larger - Normal más grande) */
 .diagonal-bottom-right {
   display: flex;
   flex-direction: column;
@@ -325,19 +325,20 @@ body {
 
 .diagonal-bottom-right .val-secondary {
   font-family: var(--font-mono);
-  font-size: 0.85rem;
-  font-weight: 700;
-  line-height: 1.1;
+  font-size: 1.30rem;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
 }
 
 .diagonal-bottom-right .lbl-secondary {
-  font-size: 0.55rem;
+  font-size: 0.58rem;
   font-family: var(--font-mono);
-  color: #64748b;
+  color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 700;
-  margin-top: 1px;
+  margin-top: 2px;
 }
 
 .success-card .card-price {

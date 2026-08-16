@@ -1,0 +1,199 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Binance Trading Bot - Used Capital & Margin API Specification",
+  "version": "1.0.0",
+  "last_updated": "2026-08-16",
+  "target_audience": "Frontend Developer (Next.js / Tauri / React)",
+  "overview": {
+    "description": "Especificación exhaustiva de los canales REST y WebSocket que el backend expone para consultar y monitorear el capital usado (used_capital), margen disponible y balances a nivel de instancia y cuenta global.",
+    "base_url": "http://localhost:8000"
+  },
+  "channels": {
+    "instance_level": [
+      {
+        "id": "get_all_instances_telemetry",
+        "name": "Telemetría de Todas las Instancias",
+        "endpoint": "/api/grid/instances/telemetry",
+        "method": "GET",
+        "protocol": "REST HTTP",
+        "source_file": "backend/app/api/grid_routes.py",
+        "description": "Obtiene la telemetría en tiempo real y el cálculo de margen/capital usado para todas las instancias de GridBot activas o configuradas. Es el canal principal para vistas de grilla o tableros de instancias.",
+        "calculation_engine": "VirtualMarginManager (app/services/margin_manager.py)",
+        "query_params": {},
+        "response_example": {
+          "1": {
+            "name": "GRID_BTC_USDT",
+            "symbol": "BTC/USDT",
+            "status": "ACTIVE",
+            "strategy_type": "GridStandardStrategy",
+            "chase_behavior": "flat",
+            "allocated_capital": 100.0,
+            "used_capital": 25.42,
+            "available_capital": 74.58,
+            "open_processes_count": 2,
+            "total_open_orders": 4,
+            "realized_pnl": 3.45,
+            "unrealized_pnl": -0.85
+          },
+          "2": {
+            "name": "GRID_ETH_USDT",
+            "symbol": "ETH/USDT",
+            "status": "ACTIVE",
+            "strategy_type": "DynamicReducerStrategy",
+            "chase_behavior": "fibonacci",
+            "allocated_capital": 50.0,
+            "used_capital": 10.15,
+            "available_capital": 39.85,
+            "open_processes_count": 1,
+            "total_open_orders": 2,
+            "realized_pnl": 1.20,
+            "unrealized_pnl": 0.30
+          }
+        },
+        "fields_explanation": {
+          "allocated_capital": "Capital asignado (en USD/Quote) configurado para la instancia (BotInstance.allocated_capital).",
+          "used_capital": "Capital/margen actualmente comprometido en posición abierta real (|contracts| * entryPrice / leverage) + órdenes abiertas de entrada (|orderQty| * price / leverage) + margen in-flight en reserva transitoria.",
+          "available_capital": "Capital remanente disponible para nuevas entradas (max(0, allocated_capital - used_capital))."
+        }
+      },
+      {
+        "id": "get_single_instance_telemetry",
+        "name": "Telemetría de Instancia Individual",
+        "endpoint": "/api/grid/instances/{instance_id}/telemetry",
+        "method": "GET",
+        "protocol": "REST HTTP",
+        "source_file": "backend/app/api/grid_routes.py",
+        "description": "Obtiene la telemetría y métricas de capital en tiempo real para una instancia específica mediante su ID numérico.",
+        "path_params": {
+          "instance_id": {
+            "type": "integer",
+            "description": "ID numérico de la instancia (ej: 1)"
+          }
+        },
+        "response_example": {
+          "name": "GRID_BTC_USDT",
+          "symbol": "BTC/USDT",
+          "status": "ACTIVE",
+          "strategy_type": "GridStandardStrategy",
+          "chase_behavior": "flat",
+          "allocated_capital": 100.0,
+          "used_capital": 25.42,
+          "available_capital": 74.58,
+          "open_processes_count": 2,
+          "total_open_orders": 4,
+          "realized_pnl": 3.45,
+          "unrealized_pnl": -0.85
+        }
+      },
+      {
+        "id": "get_instances_overview",
+        "name": "Resumen General del Portafolio e Instancias",
+        "endpoint": "/api/instances/overview",
+        "method": "GET",
+        "protocol": "REST HTTP",
+        "source_file": "backend/app/api/routes.py",
+        "description": "Resumen consolidado del portafolio, rendimiento por sesión, PnL lifetime y capitales asignados/usados persistidos en base de datos.",
+        "response_example": {
+          "status": "success",
+          "portfolio_summary": {
+            "total_lifetime_pnl": 45.23,
+            "total_session_pnl": 12.50,
+            "total_unrealized_pnl": -1.25,
+            "total_session_unrealized_pnl": -0.50,
+            "total_trades": 84,
+            "total_instances": 3,
+            "active_instances": 2
+          },
+          "instances": [
+            {
+              "id": 1,
+              "name": "GRID_BTC_USDT",
+              "symbol": "BTC/USDT",
+              "strategy_type": "GridStandardStrategy",
+              "status": "ACTIVE",
+              "allocated_capital": 100.0,
+              "used_capital": 25.42,
+              "lifetime_pnl": 32.10,
+              "session_pnl": 8.40,
+              "unrealized_pnl": -0.85,
+              "session_unrealized_pnl": -0.85,
+              "session_net": 7.55,
+              "lifetime_net": 31.25,
+              "total_trades": 52,
+              "session_trades": 14,
+              "win_rate_pc": 88.46,
+              "traded_volume": 12500.0,
+              "created_at": "2026-08-10T12:00:00"
+            }
+          ]
+        }
+      }
+    ],
+    "global_account_level": [
+      {
+        "id": "get_balances",
+        "name": "Balances de Cuenta Binance Futures",
+        "endpoint": "/api/balances",
+        "method": "GET",
+        "protocol": "REST HTTP",
+        "source_file": "backend/app/api/routes.py",
+        "description": "Obtiene los balances de la cuenta global de Binance Futures filtrados por activo (> 0.1 para USD/USDT/USDC o > 0.0001 para altcoins), mostrando margen libre, usado y total.",
+        "response_example": {
+          "spot": {},
+          "futures": {
+            "USDT": {
+              "free": 174.58,
+              "used": 35.57,
+              "total": 210.15
+            },
+            "USDC": {
+              "free": 50.0,
+              "used": 0.0,
+              "total": 50.0
+            }
+          },
+          "totals": {
+            "USDT": 210.15,
+            "USDC": 50.0
+          },
+          "success": true
+        },
+        "fields_explanation": {
+          "free": "Margen libre disponible en Binance Futures para nuevas órdenes o retiros.",
+          "used": "Margen de mantenimiento y margen inicial total actualmente retenido por Binance en la cuenta de futuros.",
+          "total": "Balance total de la billetera de futuros (free + used)."
+        }
+      }
+    ],
+    "realtime_streaming": [
+      {
+        "id": "telemetry_websocket",
+        "name": "WebSocket de Telemetría Global",
+        "endpoint": "/ws/telemetry",
+        "protocol": "WebSocket (WSS / WS)",
+        "source_file": "backend/app/main.py",
+        "description": "Canal bidireccional / broadcast de telemetría de eventos de trading, cambios de balance y estado del sistema emitidos en tiempo real por el TelemetryBus.",
+        "heartbeat": "El cliente puede enviar 'ping' periódicamente; el servidor responde 'pong'.",
+        "event_structure": {
+          "event": "INSTANCE_TELEMETRY | TICKER_UPDATE | ORDER_FILLED",
+          "timestamp": "2026-08-16T19:50:00.000000Z",
+          "data": {}
+        }
+      }
+    ]
+  },
+  "virtual_margin_calculation_rules": {
+    "formula": "Used Capital = Margin_Position + Margin_Active_Entry_Orders + Margin_InFlight",
+    "components": {
+      "margin_position": "(|contracts| * entry_price) / leverage",
+      "margin_active_entry_orders": "Sum((order_amount * order_price) / leverage) para órdenes abiertas donde reduceOnly == false",
+      "margin_inflight": "Margen reservado transitoriamente durante 3 segundos por órdenes recién despachadas antes de ser confirmadas por el stream de Binance."
+    },
+    "zero_db_guarantee": "El cálculo se realiza 100% en memoria RAM mediante el OrderCache y Streams de WebSocket para latencia ultra-baja."
+  },
+  "typescript_types": {
+    "InstanceTelemetry": "export interface InstanceTelemetry {\n  name: string;\n  symbol: string;\n  status: 'ACTIVE' | 'INACTIVE' | 'PAUSED' | 'STOPPED';\n  strategy_type: string;\n  chase_behavior: 'flat' | 'fibonacci';\n  allocated_capital: number;\n  used_capital: number;\n  available_capital: number;\n  open_processes_count?: number;\n  total_open_orders?: number;\n  realized_pnl?: number;\n  unrealized_pnl?: number;\n}",
+    "AllInstancesTelemetryResponse": "export type AllInstancesTelemetryResponse = Record<string | number, InstanceTelemetry>;",
+    "BalancesResponse": "export interface BalancesResponse {\n  spot: Record<string, any>;\n  futures: Record<string, { free: number; used: number; total: number }>;\n  totals: Record<string, number>;\n  success: boolean;\n  error?: string;\n}"
+  }
+}
