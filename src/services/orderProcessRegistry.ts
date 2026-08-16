@@ -50,3 +50,5 @@ export class OrderProcessRegistry {
     return this.registry.get(String(orderId)) || null;
   }
 }
+
+export const orderProcessRegistry = new OrderProcessRegistry();
