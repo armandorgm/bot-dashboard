@@ -99,10 +99,11 @@ export class TooltipManager {
           chaseBadgeHtml = `<span style="background: ${roleColor}22; color: ${roleColor}; border: 1px solid ${roleColor}66; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: bold;">CHASE #${procId} (${roleLbl})</span>`;
         }
       } else if (evt.type === 'trigger_rejected' || evt.type === 'trigger_passed') {
-        const badgeBg = evt.type === 'trigger_rejected' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)';
-        const badgeBorder = evt.type === 'trigger_rejected' ? '#ef4444' : '#10b981';
-        const badgeLbl = evt.type === 'trigger_rejected' ? '⛔ PREFLIGHT RECHAZADO' : '⚡ TRIGGER AUTORIZADO';
-        chaseBadgeHtml = `<span style="background: ${badgeBg}; color: ${typeColor}; border: 1px solid ${badgeBorder}; padding: 2px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 800;">${badgeLbl}</span>`;
+        const isFlip = evt.type === 'trigger_passed' || evt.triggerData?.state === 'FLIP_CONMUTATED';
+        const badgeBg = isFlip ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)';
+        const badgeBorder = isFlip ? '#f59e0b' : '#10b981';
+        const badgeLbl = isFlip ? '⚡ CONMUTACIÓN A FLIP' : '🟢 TENDENCIA: ACCUMULATION';
+        chaseBadgeHtml = `<span style="background: ${badgeBg}; color: ${isFlip ? '#f59e0b' : '#10b981'}; border: 1px solid ${badgeBorder}; padding: 2px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 800;">${badgeLbl}</span>`;
       }
 
       const borderTop =
@@ -116,7 +117,7 @@ export class TooltipManager {
       content += `
         <div style="${borderTop} font-size: 11px; line-height: 1.4;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-            <span style="color: ${typeColor}; font-weight: bold;">${isTriggerEvt ? (evt.type === 'trigger_rejected' ? 'PREFLIGHT BLOCKED' : 'TRIGGER PASSED') : typeUpper}</span>
+            <span style="color: ${typeColor}; font-weight: bold;">${isTriggerEvt ? (evt.type === 'trigger_passed' ? '⚡ CONMUTADOR: FLIP' : '🟢 CONMUTADOR: TENDENCIA') : typeUpper}</span>
             <span style="color: #94a3b8; font-size: 10px;">${timeStr}</span>
           </div>
           ${chaseBadgeHtml ? `<div style="margin-bottom: 3px;">${chaseBadgeHtml}</div>` : ''}
@@ -124,11 +125,11 @@ export class TooltipManager {
             ${
               isTriggerEvt && trg
                 ? `
-                  <tr><td style="color: #64748b; padding-right: 6px;">Pullback:</td><td style="color: ${evt.type === 'trigger_rejected' ? '#ef4444' : '#10b981'}; font-weight: 700;">${trg.current_metric_pc > 0 ? '+' : ''}${trg.current_metric_pc.toFixed(4)}% <span style="color: #94a3b8; font-weight: normal;">(Req: +${trg.required_metric_pc.toFixed(4)}%)</span></td></tr>
-                  <tr><td style="color: #64748b; padding-right: 6px;">Precio Actual:</td><td style="color: #38bdf8; font-weight: 600;">$${trg.current_price.toFixed(decimals)}</td></tr>
-                  <tr><td style="color: #64748b; padding-right: 6px;">Target Flip:</td><td style="color: #f59e0b; font-weight: 600;">$${trg.trigger_price ? trg.trigger_price.toFixed(decimals) : '--'}</td></tr>
+                  <tr><td style="color: #64748b; padding-right: 6px;">Modo Actual:</td><td style="color: #60a5fa; font-weight: 700;">${trg.conmutator_mode || trg.state} (${trg.resolved_side || (trg.position_side === 'LONG' ? 'BUY' : 'SELL')})</td></tr>
+                  <tr><td style="color: #64748b; padding-right: 6px;">Retroceso:</td><td style="color: ${trg.state === 'FLIP_CONMUTATED' ? '#f59e0b' : '#10b981'}; font-weight: 700;">${trg.current_metric_pc > 0 ? '+' : ''}${trg.current_metric_pc.toFixed(4)}% <span style="color: #94a3b8; font-weight: normal;">(Umbral: +${trg.required_metric_pc.toFixed(4)}%)</span></td></tr>
+                  <tr><td style="color: #64748b; padding-right: 6px;">Target Flip:</td><td style="color: #a78bfa; font-weight: 600;">$${trg.trigger_price ? trg.trigger_price.toFixed(decimals) : '--'}</td></tr>
                   ${trg.entry_price > 0 ? `<tr><td style="color: #64748b; padding-right: 6px;">Entry Ref:</td><td style="color: #94a3b8;">$${trg.entry_price.toFixed(decimals)}</td></tr>` : ''}
-                  ${evt.type === 'trigger_rejected' ? `<tr><td style="color: #64748b; padding-right: 6px;">Falta:</td><td style="color: #f87171; font-weight: 700;">+${trg.delta_remaining_pc.toFixed(4)}% para autorizar flip</td></tr>` : ''}
+                  <tr><td style="color: #64748b; padding-right: 6px;">Distancia al Giro:</td><td style="color: ${trg.state === 'FLIP_CONMUTATED' ? '#10b981' : '#38bdf8'}; font-weight: 700;">${trg.state === 'FLIP_CONMUTATED' ? '0.0000% (Conmutado)' : `+${trg.delta_remaining_pc.toFixed(4)}%`}</td></tr>
                 `
                 : `
                   ${

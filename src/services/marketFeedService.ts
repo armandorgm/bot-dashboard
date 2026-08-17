@@ -151,25 +151,25 @@ export class MarketFeedService {
             this.callbacks.onStrategyTriggerStatus(triggerData);
           }
 
-          // Emit visual rejection marker if blocked
-          if (triggerData.state === 'BLOCKED') {
-            this.callbacks.onHftEvent({
-              e: 'HFT_EVENT',
-              type: 'trigger_rejected',
-              time: triggerData.timestamp ? new Date(triggerData.timestamp).getTime() : Date.now(),
-              price: triggerData.current_price,
-              symbol: triggerData.symbol || config.symbol,
-              detail: `Pullback: ${triggerData.current_metric_pc.toFixed(4)}% < Requerido: +${triggerData.required_metric_pc.toFixed(4)}% | Falta: +${triggerData.delta_remaining_pc.toFixed(4)}%`,
-              triggerData: triggerData,
-            });
-          } else if (triggerData.state === 'PASSED') {
+          const isFlip = triggerData.state === 'FLIP_CONMUTATED' || triggerData.state === 'PASSED';
+          if (isFlip) {
             this.callbacks.onHftEvent({
               e: 'HFT_EVENT',
               type: 'trigger_passed',
               time: triggerData.timestamp ? new Date(triggerData.timestamp).getTime() : Date.now(),
               price: triggerData.current_price,
               symbol: triggerData.symbol || config.symbol,
-              detail: `Pullback superó el umbral requerido (+${triggerData.required_metric_pc.toFixed(4)}%)`,
+              detail: `Giro conmutado a ${triggerData.resolved_side || 'OPPOSITE'}. Umbral alcanzado (+${triggerData.required_metric_pc.toFixed(4)}%)`,
+              triggerData: triggerData,
+            });
+          } else if (triggerData.state === 'TREND_ACCUMULATION' || triggerData.state === 'BLOCKED') {
+            this.callbacks.onHftEvent({
+              e: 'HFT_EVENT',
+              type: 'trigger_rejected',
+              time: triggerData.timestamp ? new Date(triggerData.timestamp).getTime() : Date.now(),
+              price: triggerData.current_price,
+              symbol: triggerData.symbol || config.symbol,
+              detail: `Seguimiento de tendencia (${triggerData.conmutator_mode || 'TREND'}). Retroceso: ${triggerData.current_metric_pc.toFixed(4)}% | Falta: +${triggerData.delta_remaining_pc.toFixed(4)}% para giro`,
               triggerData: triggerData,
             });
           }

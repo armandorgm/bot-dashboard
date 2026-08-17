@@ -1,9 +1,9 @@
-import { StrategyTriggerStatus } from '../types';
+import { ConmutatorMode, PositionSide, ResolvedSide, StrategyTriggerStatus, TriggerState } from '../types';
 import { formatNum, getSymbolDecimals } from '../utils/formatters';
 
 /**
  * Single Responsibility: Manage calculation, color mapping and rendering of the
- * Pullback / Trigger Status Gauge (Micro-Barra Diferencial y Medidor de Umbral).
+ * Dynamic Polarity Conmutator and Trend Follower (v2.2.0 Visual Architecture).
  */
 export class TriggerGaugeManager {
   private currentStatus: StrategyTriggerStatus | null = null;
@@ -24,14 +24,17 @@ export class TriggerGaugeManager {
           instance_id: ctx.instanceId,
           symbol: ctx.symbol || '1000PEPEUSDC',
           strategy: 'GRID_POSITION_FLIPPER',
-          state: 'BLOCKED',
+          state: 'TREND_ACCUMULATION',
+          conmutator_mode: 'TREND_BUY',
+          resolved_side: 'BUY',
           position_side: 'LONG',
           entry_price: ctx.latestPrice,
           current_price: ctx.latestPrice,
-          trigger_price: ctx.latestPrice * 1.00075,
-          current_metric_pc: -0.3523,
-          required_metric_pc: 0.075,
-          delta_remaining_pc: 0.4273,
+          trigger_price: ctx.latestPrice * (1 - 0.0075),
+          current_metric_pc: 0.3523,
+          required_metric_pc: 0.75,
+          delta_remaining_pc: 0.3977,
+          multiplier: 3.0,
         });
       }
     }
@@ -64,39 +67,100 @@ export class TriggerGaugeManager {
     }
   }
 
-  private getSanitizedStatus(raw: Partial<StrategyTriggerStatus>): StrategyTriggerStatus {
+  public getSanitizedStatus(raw: Partial<StrategyTriggerStatus>): StrategyTriggerStatus {
     const ctx = this.contextGetter ? this.contextGetter() : { symbol: '1000PEPEUSDC', instanceId: 8, latestPrice: 0.002575 };
     const symbol = raw.symbol || ctx.symbol || '1000PEPEUSDC';
     const instanceId = raw.instance_id || ctx.instanceId || 8;
     const strategy = raw.strategy || 'GRID_POSITION_FLIPPER';
-    const reqMetric = typeof raw.required_metric_pc === 'number' && raw.required_metric_pc !== 0 ? raw.required_metric_pc : 0.075;
-    const currMetric = typeof raw.current_metric_pc === 'number' ? raw.current_metric_pc : 0.0;
-    const deltaRem = typeof raw.delta_remaining_pc === 'number' ? raw.delta_remaining_pc : Math.max(0, reqMetric - currMetric);
 
-    const posSide = raw.position_side || 'LONG';
+    const reqMetric = typeof raw.required_metric_pc === 'number' && raw.required_metric_pc !== 0
+      ? raw.required_metric_pc
+      : (typeof raw.required_pullback_pc === 'number' && raw.required_pullback_pc !== 0 ? raw.required_pullback_pc * 100 : 0.75);
+
+    const currMetric = typeof raw.current_metric_pc === 'number'
+      ? raw.current_metric_pc
+      : (typeof raw.actual_pullback_pc === 'number' ? Math.abs(raw.actual_pullback_pc * 100) : 0.0);
+
+    const deltaRem = typeof raw.delta_remaining_pc === 'number'
+      ? raw.delta_remaining_pc
+      : Math.max(0, reqMetric - currMetric);
+
+    const posSide: PositionSide = raw.position_side || 'LONG';
     const currentPrice = (raw.current_price && raw.current_price > 0) ? raw.current_price : (ctx.latestPrice > 0 ? ctx.latestPrice : 0.002575);
     const entryPrice = (raw.entry_price && raw.entry_price > 0) ? raw.entry_price : currentPrice;
 
     let triggerPrice = raw.trigger_price;
     if (!triggerPrice || triggerPrice <= 0) {
-      triggerPrice = entryPrice * (1 + (reqMetric / 100));
+      const dir = posSide === 'LONG' ? -1 : 1;
+      triggerPrice = entryPrice * (1 + dir * (reqMetric / 100));
     }
 
-    let state = raw.state;
+    // Normalize raw states to v2.2.0 TriggerState
+    let state: TriggerState = raw.state as TriggerState;
     if (!state || state === 'NO_DATA') {
-      state = currMetric >= reqMetric ? 'PASSED' : 'BLOCKED';
+      if (posSide === 'FLAT') {
+        state = 'READY';
+      } else if (currMetric >= reqMetric) {
+        state = 'FLIP_CONMUTATED';
+      } else {
+        state = 'TREND_ACCUMULATION';
+      }
+    } else if (state === ('PASSED' as any)) {
+      state = 'FLIP_CONMUTATED';
+    } else if (state === ('BLOCKED' as any)) {
+      state = 'TREND_ACCUMULATION';
+    }
+
+    // Determine conmutator_mode & resolved_side per v2.2.0 spec
+    let conmutatorMode: ConmutatorMode = raw.conmutator_mode as ConmutatorMode;
+    let resolvedSide: ResolvedSide = raw.resolved_side as ResolvedSide;
+
+    if (!conmutatorMode) {
+      if (posSide === 'FLAT' || state === 'READY') {
+        conmutatorMode = 'SEED';
+        resolvedSide = resolvedSide || 'BUY';
+      } else if (posSide === 'LONG') {
+        if (state === 'FLIP_CONMUTATED' || currMetric >= reqMetric) {
+          conmutatorMode = 'FLIP_SELL';
+          resolvedSide = 'SELL';
+        } else {
+          conmutatorMode = 'TREND_BUY';
+          resolvedSide = 'BUY';
+        }
+      } else {
+        // SHORT
+        if (state === 'FLIP_CONMUTATED' || currMetric >= reqMetric) {
+          conmutatorMode = 'FLIP_BUY';
+          resolvedSide = 'BUY';
+        } else {
+          conmutatorMode = 'TREND_SELL';
+          resolvedSide = 'SELL';
+        }
+      }
+    }
+
+    if (!resolvedSide) {
+      if (conmutatorMode === 'TREND_BUY' || conmutatorMode === 'FLIP_BUY' || conmutatorMode === 'SEED') {
+        resolvedSide = 'BUY';
+      } else {
+        resolvedSide = 'SELL';
+      }
     }
 
     return {
       instance_id: instanceId,
       symbol: symbol,
       strategy: strategy,
-      condition_name: raw.condition_name || 'PULLBACK_REQUIREMENT',
+      condition_name: raw.condition_name || 'PULLBACK_CONMUTATOR',
       state: state,
+      conmutator_mode: conmutatorMode,
+      resolved_side: resolvedSide,
       position_side: posSide,
       entry_price: entryPrice,
       current_price: currentPrice,
       trigger_price: triggerPrice,
+      actual_pullback_pc: raw.actual_pullback_pc,
+      required_pullback_pc: raw.required_pullback_pc,
       current_metric_pc: currMetric,
       required_metric_pc: reqMetric,
       delta_remaining_pc: deltaRem,
@@ -107,33 +171,74 @@ export class TriggerGaugeManager {
   }
 
   /**
-   * Determine color theme based on pullback metric vs required threshold
+   * Determine color theme based on v2.2.0 Conmutator Mode & State
    */
-  public getMetricColor(currentMetric: number, requiredMetric: number, state: string): {
+  public getMetricColor(currentMetric: number, requiredMetric: number, state: string, conmutatorMode?: string): {
     color: string;
     bg: string;
     border: string;
     ledClass: string;
   } {
-    if (state === 'PASSED' || currentMetric >= requiredMetric) {
+    if (conmutatorMode === 'TREND_BUY') {
       return {
-        color: '#10b981', // Emerald Green
+        color: '#10b981', // Emerald Green (Trend Buy)
         bg: 'rgba(16, 185, 129, 0.12)',
         border: 'rgba(16, 185, 129, 0.4)',
         ledClass: 'led-green',
       };
     }
-    if (currentMetric >= 0 && currentMetric < requiredMetric) {
+    if (conmutatorMode === 'TREND_SELL') {
       return {
-        color: '#f59e0b', // Amber / Yellow
+        color: '#ef4444', // Red/Orange (Trend Sell)
+        bg: 'rgba(239, 68, 68, 0.12)',
+        border: 'rgba(239, 68, 68, 0.4)',
+        ledClass: 'led-red',
+      };
+    }
+    if (conmutatorMode === 'FLIP_SELL') {
+      return {
+        color: '#f59e0b', // Amber / Warning Gold (Flip to Short)
         bg: 'rgba(245, 158, 11, 0.12)',
         border: 'rgba(245, 158, 11, 0.4)',
         ledClass: 'led-yellow',
       };
     }
-    // Negative pullback / Blocked
+    if (conmutatorMode === 'FLIP_BUY') {
+      return {
+        color: '#3b82f6', // Blue / Bright Azure (Flip to Long)
+        bg: 'rgba(59, 130, 246, 0.12)',
+        border: 'rgba(59, 130, 246, 0.4)',
+        ledClass: 'led-blue',
+      };
+    }
+    if (conmutatorMode === 'SEED' || state === 'READY') {
+      return {
+        color: '#06b6d4', // Cyan (Seed Mode)
+        bg: 'rgba(6, 182, 212, 0.12)',
+        border: 'rgba(6, 182, 212, 0.4)',
+        ledClass: 'led-cyan',
+      };
+    }
+
+    // Fallback based on metric & state
+    if (state === 'FLIP_CONMUTATED' || state === 'PASSED' || currentMetric >= requiredMetric) {
+      return {
+        color: '#10b981',
+        bg: 'rgba(16, 185, 129, 0.12)',
+        border: 'rgba(16, 185, 129, 0.4)',
+        ledClass: 'led-green',
+      };
+    }
+    if (currentMetric > 0) {
+      return {
+        color: '#f59e0b',
+        bg: 'rgba(245, 158, 11, 0.12)',
+        border: 'rgba(245, 158, 11, 0.4)',
+        ledClass: 'led-yellow',
+      };
+    }
     return {
-      color: '#ef4444', // Red
+      color: '#ef4444',
       bg: 'rgba(239, 68, 68, 0.12)',
       border: 'rgba(239, 68, 68, 0.4)',
       ledClass: 'led-red',
@@ -141,7 +246,45 @@ export class TriggerGaugeManager {
   }
 
   /**
-   * Render the visual gauge inside the target DOM container
+   * Get human readable label and icon for a Conmutator Mode
+   */
+  public getConmutatorModeBadgeInfo(mode?: ConmutatorMode, state?: TriggerState): { label: string; subLabel: string } {
+    switch (mode) {
+      case 'TREND_BUY':
+        return {
+          label: '🟢 TENDENCIA: COMPRANDO (BUY)',
+          subLabel: 'Seguimiento de tendencia activa en Long. Recomprando retrocesos del grid.',
+        };
+      case 'TREND_SELL':
+        return {
+          label: '🔴 TENDENCIA: VENDIENDO (SELL)',
+          subLabel: 'Seguimiento de tendencia activa en Short. Revendiendo retrocesos del grid.',
+        };
+      case 'FLIP_SELL':
+        return {
+          label: '⚡ GIRO A SHORT (SELL)',
+          subLabel: 'Umbral alcanzado. Conmutador invierte polaridad para girar a SHORT con 2x.',
+        };
+      case 'FLIP_BUY':
+        return {
+          label: '⚡ GIRO A LONG (BUY)',
+          subLabel: 'Umbral alcanzado. Conmutador invierte polaridad para girar a LONG con 2x.',
+        };
+      case 'SEED':
+        return {
+          label: '🌱 INICIAL: MODO SEMILLA',
+          subLabel: 'Sin posición activa. Listo para lanzar la primera orden semilla.',
+        };
+      default:
+        if (state === 'FLIP_CONMUTATED') {
+          return { label: '⚡ GIRO CONMUTADO', subLabel: 'Umbral de reversión alcanzado.' };
+        }
+        return { label: '⚪ CONMUTADOR LISTO', subLabel: 'Evaluando condiciones de disparo.' };
+    }
+  }
+
+  /**
+   * Render the visual gauge and conmutator panel inside the target DOM container
    */
   public render(containerId: string = 'trigger-gauge-container'): void {
     const container = document.getElementById(containerId);
@@ -156,52 +299,40 @@ export class TriggerGaugeManager {
     container.style.display = 'flex';
     const decimals = getSymbolDecimals(s.symbol);
 
-    const isPassed = s.state === 'PASSED' || s.current_metric_pc >= s.required_metric_pc;
-    const isReady = s.state === 'READY' || s.position_side === 'FLAT';
-    const colorTheme = this.getMetricColor(s.current_metric_pc, s.required_metric_pc, s.state);
+    const isFlip = s.state === 'FLIP_CONMUTATED' || (s.conmutator_mode && s.conmutator_mode.startsWith('FLIP_'));
+    const isReady = s.state === 'READY' || s.position_side === 'FLAT' || s.conmutator_mode === 'SEED';
+    const colorTheme = this.getMetricColor(s.current_metric_pc, s.required_metric_pc, s.state, s.conmutator_mode);
+    const badgeInfo = this.getConmutatorModeBadgeInfo(s.conmutator_mode, s.state);
 
-    // Calculate dynamic range for the visual track: default [-0.50%, +0.50%]
-    const maxVal = Math.max(0.5, Math.abs(s.required_metric_pc) * 2, Math.abs(s.current_metric_pc) * 1.3);
-    const minVal = -maxVal;
+    // Track dynamic range for visual bar: [0.00%, maxVal%]
+    const maxVal = Math.max(1.0, s.required_metric_pc * 1.5, s.current_metric_pc * 1.2);
+    const minVal = 0.0;
     const totalSpan = maxVal - minVal || 1;
 
-    // Relative percentage on the track (0% to 100%)
     const getTrackPosPercent = (val: number) => {
       const clamped = Math.max(minVal, Math.min(maxVal, val));
       return ((clamped - minVal) / totalSpan) * 100;
     };
 
-    const zeroPos = getTrackPosPercent(0);
     const targetPos = getTrackPosPercent(s.required_metric_pc);
     const currentPos = getTrackPosPercent(s.current_metric_pc);
 
-    // Progress bar fill geometry
-    let fillLeft = zeroPos;
-    let fillWidth = 0;
-    if (s.current_metric_pc >= 0) {
-      fillLeft = zeroPos;
-      fillWidth = currentPos - zeroPos;
-    } else {
-      fillLeft = currentPos;
-      fillWidth = zeroPos - currentPos;
-    }
+    // Progress bar fill width from 0%
+    const fillWidth = Math.max(2, Math.min(100, currentPos));
 
     const currSign = s.current_metric_pc > 0 ? '+' : '';
     const reqSign = s.required_metric_pc > 0 ? '+' : '';
     const deltaSign = s.delta_remaining_pc > 0 ? '+' : '';
 
-    // Status message
-    let statusBadgeText = '';
+    // Explanatory footer text
     let statusDetailText = '';
-    if (isPassed) {
-      statusBadgeText = '✅ UMBRAL ALCANZADO / AUTORIZADO';
-      statusDetailText = `Pullback superó el objetivo requerido (+${s.required_metric_pc.toFixed(4)}%). Flip autorizado.`;
+    if (isFlip) {
+      statusDetailText = `Giro conmutado a ${s.resolved_side}. Umbral de reversión alcanzado (+${s.required_metric_pc.toFixed(4)}%). Conmutador en polaridad invertida.`;
     } else if (isReady) {
-      statusBadgeText = '⚪ READY (FLAT)';
-      statusDetailText = 'Sin posición activa. Listo para nueva entrada sin restricción de pullback.';
+      statusDetailText = 'Sin posición activa. Modo Semilla listo para apertura de ciclo.';
     } else {
-      statusBadgeText = '⛔ BLOQUEADO';
-      statusDetailText = `Falta ${deltaSign}${s.delta_remaining_pc.toFixed(4)}% de rebote para autorizar flip`;
+      const oppositeSide = s.position_side === 'LONG' ? 'SHORT (SELL)' : 'LONG (BUY)';
+      statusDetailText = `Acumulando en ${s.position_side} (${s.resolved_side}). A ${s.delta_remaining_pc.toFixed(4)}% del umbral para conmutar giro a ${oppositeSide}.`;
     }
 
     container.innerHTML = `
@@ -209,45 +340,51 @@ export class TriggerGaugeManager {
         <!-- Header -->
         <div class="trigger-gauge-header">
           <div class="trigger-gauge-title-group">
-            <span class="trigger-gauge-icon">🎯</span>
+            <span class="trigger-gauge-icon">⚡</span>
             <div>
               <div class="trigger-gauge-title">
-                Condición ${s.position_side} Flip: Pullback actual vs Requerido (${reqSign}${s.required_metric_pc.toFixed(4)}%)
+                Conmutador de Polaridad: <span style="color: ${colorTheme.color}; font-weight: bold;">${s.position_side} → ${s.resolved_side}</span> · Umbral: ${reqSign}${s.required_metric_pc.toFixed(4)}%
               </div>
               <div class="trigger-gauge-subtitle">
-                Estrategia: <span style="color: #60a5fa; font-weight: bold;">${s.strategy}</span> · Símbolo: <span style="color: #cbd5e1; font-weight: bold;">${s.symbol}</span>
+                Estrategia: <span style="color: #60a5fa; font-weight: bold;">${s.strategy}</span> · Símbolo: <span style="color: #cbd5e1; font-weight: bold;">${s.symbol}</span> · Multiplicador: <span style="color: #a78bfa; font-weight: bold;">${s.multiplier || 3}x</span>
               </div>
             </div>
           </div>
           <div class="trigger-status-badge" style="background: ${colorTheme.bg}; color: ${colorTheme.color}; border: 1px solid ${colorTheme.border};">
             <span class="pulse-indicator" style="background-color: ${colorTheme.color}; box-shadow: 0 0 8px ${colorTheme.color};"></span>
-            <span>${statusBadgeText}</span>
+            <span>${badgeInfo.label}</span>
           </div>
         </div>
 
         <!-- Metrics Row -->
         <div class="trigger-metrics-row">
           <div class="trigger-metric-chip">
-            <span class="trigger-chip-lbl">Pullback Actual:</span>
+            <span class="trigger-chip-lbl">Modo Conmutador:</span>
+            <span class="trigger-chip-val" style="color: ${colorTheme.color}; font-weight: 800;">
+              ${s.conmutator_mode || s.state} (${s.resolved_side})
+            </span>
+          </div>
+          <div class="trigger-metric-chip">
+            <span class="trigger-chip-lbl">Retroceso Actual:</span>
             <span class="trigger-chip-val" style="color: ${colorTheme.color}; font-weight: 800;">
               ${currSign}${s.current_metric_pc.toFixed(4)}%
             </span>
           </div>
           <div class="trigger-metric-chip">
-            <span class="trigger-chip-lbl">Umbral Requerido:</span>
+            <span class="trigger-chip-lbl">Umbral de Giro:</span>
             <span class="trigger-chip-val" style="color: #f59e0b; font-weight: 700;">
               ${reqSign}${s.required_metric_pc.toFixed(4)}%
             </span>
           </div>
           <div class="trigger-metric-chip">
-            <span class="trigger-chip-lbl">Delta Faltante:</span>
-            <span class="trigger-chip-val" style="color: ${isPassed ? '#10b981' : '#f87171'}; font-weight: 700;">
-              ${isPassed ? '0.0000%' : `${deltaSign}${s.delta_remaining_pc.toFixed(4)}%`}
+            <span class="trigger-chip-lbl">Distancia al Giro:</span>
+            <span class="trigger-chip-val" style="color: ${isFlip ? '#10b981' : '#38bdf8'}; font-weight: 700;">
+              ${isFlip ? '0.0000%' : `${deltaSign}${s.delta_remaining_pc.toFixed(4)}%`}
             </span>
           </div>
           <div class="trigger-metric-chip">
-            <span class="trigger-chip-lbl">Target Price:</span>
-            <span class="trigger-chip-val" style="color: #38bdf8;">
+            <span class="trigger-chip-lbl">Flip Target Price:</span>
+            <span class="trigger-chip-val" style="color: #a78bfa; font-weight: 700;">
               $${s.trigger_price !== null ? formatNum(s.trigger_price, decimals) : '--'}
             </span>
           </div>
@@ -265,29 +402,25 @@ export class TriggerGaugeManager {
           </div>
         </div>
 
-        <!-- Bidirectional Progress Bar / Gauge -->
+        <!-- Proximity to Flip Reversal Bar / Gauge -->
         <div class="trigger-bar-container">
-          <!-- Scale limits labels -->
           <div class="trigger-bar-labels">
-            <span>[${minVal.toFixed(2)}%]</span>
-            <span style="color: #94a3b8;">[0.00% Base]</span>
+            <span>[0.00% Base]</span>
+            <span style="color: #94a3b8;">Proximidad al Giro (Flip Reversal)</span>
             <span>[+${maxVal.toFixed(2)}%]</span>
           </div>
 
           <div class="trigger-bar-track">
-            <!-- Zero Divider Line -->
-            <div class="trigger-zero-line" style="left: ${zeroPos}%;"></div>
-
-            <!-- Target Required Line & Marker -->
-            <div class="trigger-target-line" style="left: ${targetPos}%;" title="Umbral Objetivo: ${reqSign}${s.required_metric_pc.toFixed(4)}%">
-              <div class="trigger-target-pin">▲ Target (${reqSign}${s.required_metric_pc.toFixed(3)}%)</div>
+            <!-- Target Flip Line & Marker -->
+            <div class="trigger-target-line" style="left: ${targetPos}%;" title="Umbral de Giro: ${reqSign}${s.required_metric_pc.toFixed(4)}%">
+              <div class="trigger-target-pin" style="color: #f59e0b; border-color: rgba(245,158,11,0.5);">⚡ Flip Target (${reqSign}${s.required_metric_pc.toFixed(3)}%)</div>
             </div>
 
             <!-- Metric Progress Fill -->
-            <div class="trigger-progress-fill" style="left: ${fillLeft}%; width: ${Math.max(2, fillWidth)}%; background: ${colorTheme.color};"></div>
+            <div class="trigger-progress-fill" style="left: 0%; width: ${fillWidth}%; background: ${colorTheme.color};"></div>
 
             <!-- Current Metric Marker Bubble -->
-            <div class="trigger-current-marker" style="left: ${currentPos}%; background: ${colorTheme.color};" title="Pullback Actual: ${currSign}${s.current_metric_pc.toFixed(4)}%">
+            <div class="trigger-current-marker" style="left: ${currentPos}%; background: ${colorTheme.color};" title="Retroceso Actual: ${currSign}${s.current_metric_pc.toFixed(4)}%">
               <span class="trigger-marker-dot"></span>
               <span class="trigger-marker-label" style="border-color: ${colorTheme.color};">
                 ${currSign}${s.current_metric_pc.toFixed(4)}%
@@ -298,7 +431,7 @@ export class TriggerGaugeManager {
 
         <!-- Footer status detail -->
         <div class="trigger-gauge-footer">
-          <span style="color: #94a3b8;">Estado:</span>
+          <span style="color: #94a3b8;">Estado Operacional:</span>
           <strong style="color: ${colorTheme.color};">${statusDetailText}</strong>
         </div>
       </div>
@@ -306,27 +439,42 @@ export class TriggerGaugeManager {
   }
 
   /**
-   * Helper for rendering compact badge in global matrix table
+   * Helper for rendering compact badge in global matrix table per v2.2.0
    */
   public getCompactStatusBadgeHtml(s?: StrategyTriggerStatus): string {
     if (!s) return '<span style="color: #64748b;">--</span>';
-    const isPassed = s.state === 'PASSED' || s.current_metric_pc >= s.required_metric_pc;
-    const isReady = s.state === 'READY' || s.position_side === 'FLAT';
-    const theme = this.getMetricColor(s.current_metric_pc, s.required_metric_pc, s.state);
-    const currSign = s.current_metric_pc > 0 ? '+' : '';
+    const sanitized = this.getSanitizedStatus(s);
+    const theme = this.getMetricColor(sanitized.current_metric_pc, sanitized.required_metric_pc, sanitized.state, sanitized.conmutator_mode);
 
-    if (isReady) {
-      return `<span style="background: rgba(148, 163, 184, 0.1); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold;">⚪ FLAT</span>`;
+    let modeIcon = '🟢';
+    let modeText = 'TREND';
+    if (sanitized.conmutator_mode === 'TREND_BUY') {
+      modeIcon = '🟢';
+      modeText = 'TREND BUY';
+    } else if (sanitized.conmutator_mode === 'TREND_SELL') {
+      modeIcon = '🔴';
+      modeText = 'TREND SELL';
+    } else if (sanitized.conmutator_mode === 'FLIP_SELL') {
+      modeIcon = '⚡';
+      modeText = 'FLIP SELL';
+    } else if (sanitized.conmutator_mode === 'FLIP_BUY') {
+      modeIcon = '⚡';
+      modeText = 'FLIP BUY';
+    } else if (sanitized.conmutator_mode === 'SEED' || sanitized.state === 'READY') {
+      modeIcon = '🌱';
+      modeText = 'SEED';
     }
 
-    const badgeIcon = isPassed ? '✅' : '⛔';
-    const deltaText = isPassed ? 'PASSED' : `-${s.delta_remaining_pc.toFixed(2)}%`;
+    const currSign = sanitized.current_metric_pc > 0 ? '+' : '';
+    const isFlip = sanitized.state === 'FLIP_CONMUTATED' || sanitized.conmutator_mode?.startsWith('FLIP_');
+    const deltaText = isFlip ? 'FLIP' : `-${sanitized.delta_remaining_pc.toFixed(2)}%`;
 
     return `
-      <div style="display: inline-flex; align-items: center; gap: 4px; background: ${theme.bg}; color: ${theme.color}; border: 1px solid ${theme.border}; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-family: monospace; font-weight: bold;" title="Pullback: ${currSign}${s.current_metric_pc.toFixed(4)}% | Target: ${s.required_metric_pc}% | Delta: ${s.delta_remaining_pc}%">
-        <span>${badgeIcon}</span>
-        <span>${currSign}${s.current_metric_pc.toFixed(2)}%</span>
-        <span style="opacity: 0.7; font-size: 9px;">(${deltaText})</span>
+      <div style="display: inline-flex; align-items: center; gap: 4px; background: ${theme.bg}; color: ${theme.color}; border: 1px solid ${theme.border}; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-family: monospace; font-weight: bold;" title="Modo: ${sanitized.conmutator_mode} (${sanitized.resolved_side}) | Retroceso: ${currSign}${sanitized.current_metric_pc.toFixed(4)}% | Umbral: ${sanitized.required_metric_pc}%">
+        <span>${modeIcon}</span>
+        <span>${modeText}</span>
+        <span style="opacity: 0.85; font-size: 9.5px;">${currSign}${sanitized.current_metric_pc.toFixed(2)}%</span>
+        <span style="opacity: 0.65; font-size: 9px;">(${deltaText})</span>
       </div>
     `;
   }

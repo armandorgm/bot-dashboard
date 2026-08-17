@@ -69,7 +69,9 @@ export interface ModificationInfo {
   new_price: number | null;
 }
 
-export type TriggerState = 'BLOCKED' | 'PASSED' | 'READY' | 'NO_DATA';
+export type TriggerState = 'TREND_ACCUMULATION' | 'FLIP_CONMUTATED' | 'READY' | 'NO_DATA' | 'BLOCKED' | 'PASSED';
+export type ConmutatorMode = 'TREND_BUY' | 'TREND_SELL' | 'FLIP_SELL' | 'FLIP_BUY' | 'SEED' | 'FALLBACK';
+export type ResolvedSide = 'BUY' | 'SELL';
 export type PositionSide = 'LONG' | 'SHORT' | 'FLAT';
 
 export interface StrategyTriggerStatus {
@@ -78,10 +80,14 @@ export interface StrategyTriggerStatus {
   strategy: string;
   condition_name?: string;
   state: TriggerState;
+  conmutator_mode?: ConmutatorMode;
+  resolved_side?: ResolvedSide;
   position_side: PositionSide;
   entry_price: number;
   current_price: number;
   trigger_price: number | null;
+  actual_pullback_pc?: number;
+  required_pullback_pc?: number;
   current_metric_pc: number;
   required_metric_pc: number;
   delta_remaining_pc: number;

@@ -94,6 +94,26 @@ body {
   box-shadow: 0 0 8px var(--green-neon);
 }
 
+.led-yellow {
+  background-color: #f59e0b;
+  box-shadow: 0 0 8px #f59e0b;
+}
+
+.led-blue {
+  background-color: #3b82f6;
+  box-shadow: 0 0 8px #3b82f6;
+}
+
+.led-cyan {
+  background-color: #06b6d4;
+  box-shadow: 0 0 8px #06b6d4;
+}
+
+.led-purple {
+  background-color: #a855f7;
+  box-shadow: 0 0 8px #a855f7;
+}
+
 .header-right {
   display: flex;
   align-items: center;

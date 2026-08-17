@@ -421,18 +421,21 @@ export class ChartRenderer {
       }
     });
 
-    // ── 5.6. Strategy Trigger & Pullback Threshold Lines (Macro View) ───────
+    // ── 5.6. Strategy Trigger & Flip Reversal Threshold Line (Guide v2.2.0 Macro View) ───────
     const triggerStatus = this.ctxState.getTriggerStatus ? this.ctxState.getTriggerStatus() : null;
     if (triggerStatus && triggerStatus.trigger_price !== null && triggerStatus.trigger_price > 0) {
       const trigPrice = triggerStatus.trigger_price;
       const yTrig = getY(trigPrice);
-      const isBlocked = triggerStatus.state === 'BLOCKED';
-      const isPassed = triggerStatus.state === 'PASSED' || triggerStatus.current_metric_pc >= triggerStatus.required_metric_pc;
+      const isFlipActive = triggerStatus.state === 'FLIP_CONMUTATED' || triggerStatus.conmutator_mode?.startsWith('FLIP_');
+      const isTrendAcc = triggerStatus.state === 'TREND_ACCUMULATION' || (!isFlipActive && triggerStatus.state !== 'READY');
 
-      const trigColor = isPassed ? '#10b981' : isBlocked ? '#f59e0b' : '#38bdf8';
+      // Color rules per v2.2.0 section 4.A:
+      // - Soft Purple/Indigo (#818CF8) for TREND_ACCUMULATION (potential reversal target)
+      // - Bright Orange (#F97316) for FLIP_CONMUTATED (active flip execution)
+      const trigColor = isFlipActive ? '#f97316' : isTrendAcc ? '#818cf8' : '#38bdf8';
 
-      // 1. Zona sombreada de Bloqueo (entre precio actual y trigger price)
-      if (isBlocked && history.length > 0) {
+      // 1. Dynamic Reversal Gradient Zone (between current price and trigger price)
+      if (isTrendAcc && history.length > 0) {
         const yCurrent = getY(history[history.length - 1].bid);
         const topY = Math.min(yTrig, yCurrent);
         const botY = Math.max(yTrig, yCurrent);
@@ -440,8 +443,8 @@ export class ChartRenderer {
         if (blockH > 1) {
           ctx.save();
           const grad = ctx.createLinearGradient(0, topY, 0, botY);
-          grad.addColorStop(0, 'rgba(239, 68, 68, 0.08)');
-          grad.addColorStop(1, 'rgba(245, 158, 11, 0.02)');
+          grad.addColorStop(0, 'rgba(129, 140, 248, 0.07)');
+          grad.addColorStop(1, 'rgba(99, 102, 241, 0.01)');
           ctx.fillStyle = grad;
           ctx.fillRect(0, topY, chartWidth, blockH);
           ctx.restore();
@@ -469,7 +472,7 @@ export class ChartRenderer {
         ctx.restore();
       }
 
-      // 3. Dynamic Trigger Line
+      // 3. Dynamic Flip Threshold Line
       ctx.save();
       ctx.strokeStyle = trigColor;
       ctx.lineWidth = 1.8;
@@ -481,10 +484,10 @@ export class ChartRenderer {
 
       // Trigger Badge on chart canvas
       const reqSign = triggerStatus.required_metric_pc > 0 ? '+' : '';
-      const trigLabel = `Flip Trigger: ${trigPrice.toFixed(decimals)} (${reqSign}${triggerStatus.required_metric_pc.toFixed(3)}%)`;
+      const trigLabel = `⚡ Flip Target: ${trigPrice.toFixed(decimals)} (${reqSign}${triggerStatus.required_metric_pc.toFixed(3)}%)`;
       ctx.font = chartDisplayConfig.getScaledFont(8, "'JetBrains Mono', monospace", true);
-      const trigLblW = ctx.measureText(trigLabel).width + 10;
-      const trigLblH = 14;
+      const trigLblW = ctx.measureText(trigLabel).width + 12;
+      const trigLblH = 15;
       ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
       ctx.strokeStyle = trigColor;
       ctx.lineWidth = 1;

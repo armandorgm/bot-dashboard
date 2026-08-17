@@ -21,6 +21,7 @@ import { instanceService } from './services/instanceService';
 import { globalOverviewManager } from './services/globalOverviewManager';
 import { MarketFeedService } from './services/marketFeedService';
 import { triggerGaugeManager } from './services/triggerGaugeManager';
+import { runTriggerGaugeVerification } from './services/triggerGaugeManager.test';
 
 // ── Service Instantiations ──────────────────────────────────────────────────
 const sessionMetrics = new SessionMetricsTracker();
@@ -574,6 +575,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   logger.init();
   openOrdersManager.init();
   tooltipManager.init();
+  try {
+    runTriggerGaugeVerification();
+  } catch (err) {
+    console.error('[TriggerGaugeManager] Verification error:', err);
+  }
   triggerGaugeManager.render();
 
 
