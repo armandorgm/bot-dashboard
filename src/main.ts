@@ -33,7 +33,7 @@ const orderProcessRegistry = new OrderProcessRegistry();
 let config: InstanceConfig = {
   instance_id: '--',
   symbol: '--',
-  port: '12001',
+  port: '8000',
   parent_api_port: '8000',
 };
 

@@ -101,8 +101,10 @@ export class MarketFeedService {
 
   public connectLocalBotWebSocket(): void {
     const config = this.callbacks.getConfig();
-    const wsUrl = `ws://127.0.0.1:${config.port}/ws/notifications`;
+    const targetPort = config.port || config.parent_api_port || '8000';
+    const wsUrl = `ws://127.0.0.1:${targetPort}/ws/notifications`;
     addLog(`Connecting to local bot WebSocket at ${wsUrl}...`, 'info');
+
 
     if (this.localBotWs) {
       this.localBotWs.onclose = null;
