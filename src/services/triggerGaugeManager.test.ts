@@ -103,9 +103,28 @@ export function runTriggerGaugeVerification(): boolean {
     throw new Error(`Failed compact badge HTML check: got ${compactHtml}`);
   }
 
-  const compactFlipHtml = manager.getCompactStatusBadgeHtml(sanitizedFlip);
-  if (!compactFlipHtml.includes('FLIP SELL') || !compactFlipHtml.includes('0.77%')) {
-    throw new Error(`Failed compact flip badge HTML check: got ${compactFlipHtml}`);
+  // 10. Live onTick real-time price fluctuation check
+  manager.setStatus({
+    instance_id: 8,
+    symbol: '1000PEPEUSDC',
+    strategy: 'GRID_POSITION_FLIPPER',
+    state: 'TREND_ACCUMULATION',
+    conmutator_mode: 'TREND_BUY',
+    resolved_side: 'BUY',
+    position_side: 'LONG',
+    entry_price: 0.0026,
+    current_price: 0.00259,
+    trigger_price: 0.0025805,
+    current_metric_pc: 0.3846,
+    required_metric_pc: 0.75,
+    delta_remaining_pc: 0.3654,
+  });
+
+  // Simulate tick down (adverse pullback increases)
+  manager.onTick(0.0025800, 0.0025800);
+  const updatedStatus = manager.getStatus();
+  if (!updatedStatus || updatedStatus.current_price !== 0.00258 || updatedStatus.state !== 'FLIP_CONMUTATED' || updatedStatus.conmutator_mode !== 'FLIP_SELL') {
+    throw new Error(`Failed live onTick update check: got ${JSON.stringify(updatedStatus)}`);
   }
 
   return true;

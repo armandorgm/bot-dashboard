@@ -84,6 +84,18 @@ const chartRenderer = new ChartRenderer({
   getHz: () => marketFeed.getHz(),
 });
 
+// Wire Trigger Gauge Context Getter
+triggerGaugeManager.setContextGetter(() => {
+  const currentSelected = instanceService.getSelectedInstanceId();
+  const targetInstId = currentSelected !== null ? currentSelected : parseInt(config.instance_id || '1', 10);
+  const latestPrice = history.length > 0 ? history[history.length - 1].bid : 0;
+  return {
+    symbol: config.symbol,
+    instanceId: targetInstId,
+    latestPrice: latestPrice,
+  };
+});
+
 // Market Feed Service Coordinator
 const marketFeed = new MarketFeedService({
   getConfig: () => config,
@@ -91,6 +103,7 @@ const marketFeed = new MarketFeedService({
     history.push({ time: Date.now(), bid, ask });
     chartRenderer.pruneHistory(history);
     updatePnLDisplay(bid, ask);
+    triggerGaugeManager.onTick(bid, ask);
     chartRenderer.draw();
   },
   onStrategyTriggerStatus: (status) => {

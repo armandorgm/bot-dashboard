@@ -35,16 +35,18 @@ Diseñé e implementé la actualización completa del frontend respetando el est
    - En [`src/services/chartRenderer.ts`](file:///f:/binance-trading-bot/bot-dashboard/src/services/chartRenderer.ts), tracé la **Línea de Conmutación de Giro (`trigger_price`)** con color adaptativo: Índigo/Púrpura suave (`#818CF8`) durante acumulación en tendencia y Naranja vivo (`#F97316`) al ejecutarse el giro conmutado, junto a la etiqueta `⚡ Flip Target`.
    - Reemplacé el sombreado restrictivo previo por un gradiente sutil de Zona de Reversión Dinámica.
 
-4. **Tooltips y Telemetría en Tiempo Real:**
+4. **Reactividad Viva por Tick de Mercado y Telemetría:**
+   - Implementé el método `onTick(bid, ask)` en [`src/services/triggerGaugeManager.ts`](file:///f:/binance-trading-bot/bot-dashboard/src/services/triggerGaugeManager.ts), recalculando en memoria a la frecuencia de ticks de Binance WebSocket el retroceso adverso, la distancia al umbral, el deslizamiento de la burbuja y el estado de giro en tiempo real.
+   - Diseñé un mecanismo de mutación in-place del DOM para actualizar los elementos numéricos y de track sin recrear el DOM ni producir parpadeo (sub-millisecond rendering).
    - Enriquecí [`src/services/tooltipManager.ts`](file:///f:/binance-trading-bot/bot-dashboard/src/services/tooltipManager.ts) para desglosar el Modo Conmutador, Dirección Resuelta, Retroceso Actual, Umbral de Giro y Distancia al Giro.
    - Sincronicé el despachador WebSocket en [`src/services/marketFeedService.ts`](file:///f:/binance-trading-bot/bot-dashboard/src/services/marketFeedService.ts).
 
 ---
 
 ## 3. Pruebas y Validación
-- **Suite de Pruebas Unitarias:** Creé y validé [`src/services/triggerGaugeManager.test.ts`](file:///f:/binance-trading-bot/bot-dashboard/src/services/triggerGaugeManager.test.ts) cubriendo todos los modos operacionales (`TREND_BUY`, `TREND_SELL`, `FLIP_SELL`, `FLIP_BUY`, `SEED`), sanitización de payloads de mercado y generación de badges.
+- **Suite de Pruebas Unitarias:** Creé y validé [`src/services/triggerGaugeManager.test.ts`](file:///f:/binance-trading-bot/bot-dashboard/src/services/triggerGaugeManager.test.ts) cubriendo todos los modos operacionales (`TREND_BUY`, `TREND_SELL`, `FLIP_SELL`, `FLIP_BUY`, `SEED`), sanitización de payloads de mercado, generación de badges y reactividad en tiempo real de `onTick`.
 - **Verificación Estricta de Tipos:** `npx tsc --noEmit` completado con 0 errores.
-- **Empaquetado de Producción:** `npm run build` ejecutado exitosamente en 617ms produciendo los artefactos optimizados en `dist/`.
+- **Empaquetado de Producción:** `npm run build` ejecutado exitosamente en 612ms produciendo los artefactos optimizados en `dist/`.
 
 ---
 

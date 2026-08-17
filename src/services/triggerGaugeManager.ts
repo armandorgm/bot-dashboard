@@ -4,6 +4,7 @@ import { formatNum, getSymbolDecimals } from '../utils/formatters';
 /**
  * Single Responsibility: Manage calculation, color mapping and rendering of the
  * Dynamic Polarity Conmutator and Trend Follower (v2.2.0 Visual Architecture).
+ * Fully live and reactive to real-time market ticks.
  */
 export class TriggerGaugeManager {
   private currentStatus: StrategyTriggerStatus | null = null;
@@ -67,6 +68,51 @@ export class TriggerGaugeManager {
     }
   }
 
+  /**
+   * Live tick update handler: called on every market ticker WebSocket event
+   */
+  public onTick(bid: number, ask: number): void {
+    const latestPrice = (bid + ask) / 2 || bid;
+    if (!latestPrice || latestPrice <= 0) return;
+
+    let s = this.getStatus();
+    if (!s) return;
+
+    // Mutate and recalculate live metrics
+    s.current_price = latestPrice;
+
+    if (s.entry_price > 0 && s.position_side !== 'FLAT') {
+      const reqMetric = s.required_metric_pc || 0.75;
+      let adversePullbackPc = 0;
+
+      if (s.position_side === 'LONG') {
+        adversePullbackPc = ((s.entry_price - latestPrice) / s.entry_price) * 100;
+      } else if (s.position_side === 'SHORT') {
+        adversePullbackPc = ((latestPrice - s.entry_price) / s.entry_price) * 100;
+      }
+
+      // Live current metric & remaining delta
+      s.current_metric_pc = adversePullbackPc;
+      s.delta_remaining_pc = Math.max(0, reqMetric - s.current_metric_pc);
+
+      // Re-evaluate conmutator dynamic mode and state
+      if (s.current_metric_pc >= reqMetric) {
+        s.state = 'FLIP_CONMUTATED';
+        s.conmutator_mode = s.position_side === 'LONG' ? 'FLIP_SELL' : 'FLIP_BUY';
+        s.resolved_side = s.position_side === 'LONG' ? 'SELL' : 'BUY';
+      } else {
+        s.state = 'TREND_ACCUMULATION';
+        s.conmutator_mode = s.position_side === 'LONG' ? 'TREND_BUY' : 'TREND_SELL';
+        s.resolved_side = s.position_side === 'LONG' ? 'BUY' : 'SELL';
+      }
+    }
+
+    this.currentStatus = s;
+    this.instanceStatusMap.set(s.instance_id, s);
+
+    this.render();
+  }
+
   public getSanitizedStatus(raw: Partial<StrategyTriggerStatus>): StrategyTriggerStatus {
     const ctx = this.contextGetter ? this.contextGetter() : { symbol: '1000PEPEUSDC', instanceId: 8, latestPrice: 0.002575 };
     const symbol = raw.symbol || ctx.symbol || '1000PEPEUSDC';
@@ -79,7 +125,7 @@ export class TriggerGaugeManager {
 
     const currMetric = typeof raw.current_metric_pc === 'number'
       ? raw.current_metric_pc
-      : (typeof raw.actual_pullback_pc === 'number' ? Math.abs(raw.actual_pullback_pc * 100) : 0.0);
+      : (typeof raw.actual_pullback_pc === 'number' ? raw.actual_pullback_pc * 100 : 0.0);
 
     const deltaRem = typeof raw.delta_remaining_pc === 'number'
       ? raw.delta_remaining_pc
@@ -305,12 +351,12 @@ export class TriggerGaugeManager {
     const badgeInfo = this.getConmutatorModeBadgeInfo(s.conmutator_mode, s.state);
 
     // Track dynamic range for visual bar: [0.00%, maxVal%]
-    const maxVal = Math.max(1.0, s.required_metric_pc * 1.5, s.current_metric_pc * 1.2);
+    const maxVal = Math.max(1.0, s.required_metric_pc * 1.5, Math.abs(s.current_metric_pc) * 1.2);
     const minVal = 0.0;
     const totalSpan = maxVal - minVal || 1;
 
     const getTrackPosPercent = (val: number) => {
-      const clamped = Math.max(minVal, Math.min(maxVal, val));
+      const clamped = Math.max(minVal, Math.min(maxVal, Math.max(0, val)));
       return ((clamped - minVal) / totalSpan) * 100;
     };
 
@@ -335,22 +381,104 @@ export class TriggerGaugeManager {
       statusDetailText = `Acumulando en ${s.position_side} (${s.resolved_side}). A ${s.delta_remaining_pc.toFixed(4)}% del umbral para conmutar giro a ${oppositeSide}.`;
     }
 
+    // Fast-path in-place DOM update if elements already exist
+    const cardEl = document.getElementById('tg-card');
+    if (cardEl && cardEl.getAttribute('data-inst') === String(s.instance_id)) {
+      cardEl.style.borderColor = colorTheme.border;
+
+      const titlePosEl = document.getElementById('tg-title-pos');
+      if (titlePosEl) {
+        titlePosEl.innerHTML = `<span style="color: ${colorTheme.color}; font-weight: bold;">${s.position_side} → ${s.resolved_side}</span> · Umbral: ${reqSign}${s.required_metric_pc.toFixed(4)}%`;
+      }
+
+      const badgeEl = document.getElementById('tg-status-badge');
+      if (badgeEl) {
+        badgeEl.style.background = colorTheme.bg;
+        badgeEl.style.color = colorTheme.color;
+        badgeEl.style.border = `1px solid ${colorTheme.border}`;
+        badgeEl.innerHTML = `
+          <span class="pulse-indicator" style="background-color: ${colorTheme.color}; box-shadow: 0 0 8px ${colorTheme.color};"></span>
+          <span>${badgeInfo.label}</span>
+        `;
+      }
+
+      const chipModeEl = document.getElementById('tg-chip-mode');
+      if (chipModeEl) {
+        chipModeEl.style.color = colorTheme.color;
+        chipModeEl.innerText = `${s.conmutator_mode || s.state} (${s.resolved_side})`;
+      }
+
+      const chipPullbackEl = document.getElementById('tg-chip-pullback');
+      if (chipPullbackEl) {
+        chipPullbackEl.style.color = colorTheme.color;
+        chipPullbackEl.innerText = `${currSign}${s.current_metric_pc.toFixed(4)}%`;
+      }
+
+      const chipDeltaEl = document.getElementById('tg-chip-delta');
+      if (chipDeltaEl) {
+        chipDeltaEl.style.color = isFlip ? '#10b981' : '#38bdf8';
+        chipDeltaEl.innerText = isFlip ? '0.0000%' : `${deltaSign}${s.delta_remaining_pc.toFixed(4)}%`;
+      }
+
+      const chipTargetEl = document.getElementById('tg-chip-target-price');
+      if (chipTargetEl) {
+        chipTargetEl.innerText = `$${s.trigger_price !== null ? formatNum(s.trigger_price, decimals) : '--'}`;
+      }
+
+      const chipMarketEl = document.getElementById('tg-chip-market-price');
+      if (chipMarketEl) {
+        chipMarketEl.innerText = `$${formatNum(s.current_price, decimals)}`;
+      }
+
+      const fillEl = document.getElementById('tg-progress-fill');
+      if (fillEl) {
+        fillEl.style.width = `${fillWidth}%`;
+        fillEl.style.background = colorTheme.color;
+      }
+
+      const markerEl = document.getElementById('tg-current-marker');
+      if (markerEl) {
+        markerEl.style.left = `${currentPos}%`;
+        markerEl.style.background = colorTheme.color;
+      }
+
+      const markerLabelEl = document.getElementById('tg-marker-label');
+      if (markerLabelEl) {
+        markerLabelEl.style.borderColor = colorTheme.color;
+        markerLabelEl.innerText = `${currSign}${s.current_metric_pc.toFixed(4)}%`;
+      }
+
+      const targetLineEl = document.getElementById('tg-target-line');
+      if (targetLineEl) {
+        targetLineEl.style.left = `${targetPos}%`;
+      }
+
+      const detailEl = document.getElementById('tg-status-detail');
+      if (detailEl) {
+        detailEl.style.color = colorTheme.color;
+        detailEl.innerText = statusDetailText;
+      }
+
+      return;
+    }
+
+    // Full template creation if not yet initialized
     container.innerHTML = `
-      <div class="trigger-gauge-card" style="border-color: ${colorTheme.border}; width: 100%; box-sizing: border-box;">
+      <div id="tg-card" data-inst="${s.instance_id}" class="trigger-gauge-card" style="border-color: ${colorTheme.border}; width: 100%; box-sizing: border-box;">
         <!-- Header -->
         <div class="trigger-gauge-header">
           <div class="trigger-gauge-title-group">
             <span class="trigger-gauge-icon">⚡</span>
             <div>
               <div class="trigger-gauge-title">
-                Conmutador de Polaridad: <span style="color: ${colorTheme.color}; font-weight: bold;">${s.position_side} → ${s.resolved_side}</span> · Umbral: ${reqSign}${s.required_metric_pc.toFixed(4)}%
+                Conmutador de Polaridad: <span id="tg-title-pos"><span style="color: ${colorTheme.color}; font-weight: bold;">${s.position_side} → ${s.resolved_side}</span> · Umbral: ${reqSign}${s.required_metric_pc.toFixed(4)}%</span>
               </div>
               <div class="trigger-gauge-subtitle">
                 Estrategia: <span style="color: #60a5fa; font-weight: bold;">${s.strategy}</span> · Símbolo: <span style="color: #cbd5e1; font-weight: bold;">${s.symbol}</span> · Multiplicador: <span style="color: #a78bfa; font-weight: bold;">${s.multiplier || 3}x</span>
               </div>
             </div>
           </div>
-          <div class="trigger-status-badge" style="background: ${colorTheme.bg}; color: ${colorTheme.color}; border: 1px solid ${colorTheme.border};">
+          <div id="tg-status-badge" class="trigger-status-badge" style="background: ${colorTheme.bg}; color: ${colorTheme.color}; border: 1px solid ${colorTheme.border};">
             <span class="pulse-indicator" style="background-color: ${colorTheme.color}; box-shadow: 0 0 8px ${colorTheme.color};"></span>
             <span>${badgeInfo.label}</span>
           </div>
@@ -360,13 +488,13 @@ export class TriggerGaugeManager {
         <div class="trigger-metrics-row">
           <div class="trigger-metric-chip">
             <span class="trigger-chip-lbl">Modo Conmutador:</span>
-            <span class="trigger-chip-val" style="color: ${colorTheme.color}; font-weight: 800;">
+            <span id="tg-chip-mode" class="trigger-chip-val" style="color: ${colorTheme.color}; font-weight: 800;">
               ${s.conmutator_mode || s.state} (${s.resolved_side})
             </span>
           </div>
           <div class="trigger-metric-chip">
             <span class="trigger-chip-lbl">Retroceso Actual:</span>
-            <span class="trigger-chip-val" style="color: ${colorTheme.color}; font-weight: 800;">
+            <span id="tg-chip-pullback" class="trigger-chip-val" style="color: ${colorTheme.color}; font-weight: 800;">
               ${currSign}${s.current_metric_pc.toFixed(4)}%
             </span>
           </div>
@@ -378,13 +506,13 @@ export class TriggerGaugeManager {
           </div>
           <div class="trigger-metric-chip">
             <span class="trigger-chip-lbl">Distancia al Giro:</span>
-            <span class="trigger-chip-val" style="color: ${isFlip ? '#10b981' : '#38bdf8'}; font-weight: 700;">
+            <span id="tg-chip-delta" class="trigger-chip-val" style="color: ${isFlip ? '#10b981' : '#38bdf8'}; font-weight: 700;">
               ${isFlip ? '0.0000%' : `${deltaSign}${s.delta_remaining_pc.toFixed(4)}%`}
             </span>
           </div>
           <div class="trigger-metric-chip">
             <span class="trigger-chip-lbl">Flip Target Price:</span>
-            <span class="trigger-chip-val" style="color: #a78bfa; font-weight: 700;">
+            <span id="tg-chip-target-price" class="trigger-chip-val" style="color: #a78bfa; font-weight: 700;">
               $${s.trigger_price !== null ? formatNum(s.trigger_price, decimals) : '--'}
             </span>
           </div>
@@ -396,7 +524,7 @@ export class TriggerGaugeManager {
           </div>
           <div class="trigger-metric-chip">
             <span class="trigger-chip-lbl">Market Price:</span>
-            <span class="trigger-chip-val" style="color: #e2e8f0;">
+            <span id="tg-chip-market-price" class="trigger-chip-val" style="color: #e2e8f0;">
               $${formatNum(s.current_price, decimals)}
             </span>
           </div>
@@ -412,17 +540,17 @@ export class TriggerGaugeManager {
 
           <div class="trigger-bar-track">
             <!-- Target Flip Line & Marker -->
-            <div class="trigger-target-line" style="left: ${targetPos}%;" title="Umbral de Giro: ${reqSign}${s.required_metric_pc.toFixed(4)}%">
+            <div id="tg-target-line" class="trigger-target-line" style="left: ${targetPos}%;" title="Umbral de Giro: ${reqSign}${s.required_metric_pc.toFixed(4)}%">
               <div class="trigger-target-pin" style="color: #f59e0b; border-color: rgba(245,158,11,0.5);">⚡ Flip Target (${reqSign}${s.required_metric_pc.toFixed(3)}%)</div>
             </div>
 
             <!-- Metric Progress Fill -->
-            <div class="trigger-progress-fill" style="left: 0%; width: ${fillWidth}%; background: ${colorTheme.color};"></div>
+            <div id="tg-progress-fill" class="trigger-progress-fill" style="left: 0%; width: ${fillWidth}%; background: ${colorTheme.color};"></div>
 
             <!-- Current Metric Marker Bubble -->
-            <div class="trigger-current-marker" style="left: ${currentPos}%; background: ${colorTheme.color};" title="Retroceso Actual: ${currSign}${s.current_metric_pc.toFixed(4)}%">
+            <div id="tg-current-marker" class="trigger-current-marker" style="left: ${currentPos}%; background: ${colorTheme.color};" title="Retroceso Actual: ${currSign}${s.current_metric_pc.toFixed(4)}%">
               <span class="trigger-marker-dot"></span>
-              <span class="trigger-marker-label" style="border-color: ${colorTheme.color};">
+              <span id="tg-marker-label" class="trigger-marker-label" style="border-color: ${colorTheme.color};">
                 ${currSign}${s.current_metric_pc.toFixed(4)}%
               </span>
             </div>
@@ -432,7 +560,7 @@ export class TriggerGaugeManager {
         <!-- Footer status detail -->
         <div class="trigger-gauge-footer">
           <span style="color: #94a3b8;">Estado Operacional:</span>
-          <strong style="color: ${colorTheme.color};">${statusDetailText}</strong>
+          <strong id="tg-status-detail" style="color: ${colorTheme.color};">${statusDetailText}</strong>
         </div>
       </div>
     `;
