@@ -1,5 +1,6 @@
 import { GlobalOverviewResponse, AllInstancesTelemetryResponse } from '../types';
 import { getInstanceStatusColor } from '../utils/formatters';
+import { triggerGaugeManager } from './triggerGaugeManager';
 
 export class GlobalOverviewManager {
   private viewMode: 'home' | 'dashboard' = 'home';
@@ -191,11 +192,15 @@ export class GlobalOverviewManager {
         const pnlSign = inst.lifetime_pnl > 0 ? '+' : '';
         const pnlColor = inst.lifetime_pnl > 0 ? '#10b981' : inst.lifetime_pnl < 0 ? '#ef4444' : '#9ca3af';
 
+        const instTrigger = inst.trigger_status || triggerGaugeManager.getStatusForInstance(inst.id);
+        const triggerBadge = triggerGaugeManager.getCompactStatusBadgeHtml(instTrigger);
+
         return `
           <tr style="border-bottom: 1px solid #1f2937; transition: background 0.15s ease;" onmouseover="this.style.background='#1f2937'" onmouseout="this.style.background='transparent'">
             <td style="padding: 14px 16px;">
               <div style="font-weight: bold; color: #f8fafc;">#${inst.id} - ${inst.name}</div>
-              <div style="font-size: 11px; color: #64748b;">${inst.symbol} · ${inst.strategy_type}</div>
+              <div style="font-size: 11px; color: #64748b; margin-bottom: 4px;">${inst.symbol} · ${inst.strategy_type}</div>
+              <div>${triggerBadge}</div>
             </td>
             <td style="padding: 14px 16px;">
               <span style="display: inline-flex; align-items: center; gap: 6px; color: ${statusColor}; font-weight: bold; font-size: 11px; background: rgba(15,23,42,0.8); padding: 3px 8px; border-radius: 4px; border: 1px solid ${statusColor}44;">
@@ -203,6 +208,7 @@ export class GlobalOverviewManager {
                 ${inst.status}
               </span>
             </td>
+
             <td style="padding: 14px 16px; text-align: right;">
               ${
                 inst.session_pnl !== undefined && inst.session_pnl !== null

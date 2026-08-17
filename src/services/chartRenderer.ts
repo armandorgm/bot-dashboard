@@ -1,4 +1,4 @@
-import { TickData, HftEvent, VisualMarker, ChasePipelineProcess, InstanceConfig } from '../types';
+import { TickData, HftEvent, VisualMarker, ChasePipelineProcess, InstanceConfig, StrategyTriggerStatus } from '../types';
 import { formatNum, getSymbolDecimals } from '../utils/formatters';
 import { ChartDisplayConfig } from './chartDisplayConfig';
 import { ChartViewportController } from './chartViewportController';
@@ -18,6 +18,7 @@ export interface ChartContext {
   getHistory: () => TickData[];
   getHftEvents: () => HftEvent[];
   getActiveChaseProcesses: () => ChasePipelineProcess[];
+  getTriggerStatus?: () => StrategyTriggerStatus | null;
   getMaxPoints: () => number;
   getHz: () => number;
 }
@@ -398,13 +399,16 @@ export class ChartRenderer {
         const textWidth = ctx.measureText(badgeText).width;
 
         const badgePaddingH = chartDisplayConfig.getScaledSize(6);
-        const badgeH = chartDisplayConfig.getScaledSize(16);
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+        const badgeW = textWidth + badgePaddingH * 2;
+        const badgeH = chartDisplayConfig.getScaledSize(14);
+
+
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
         ctx.strokeStyle = lineColor;
-        ctx.lineWidth = chartDisplayConfig.getScaledSize(1);
+        ctx.lineWidth = 1;
         ctx.setLineDash([]);
         ctx.beginPath();
-        ctx.roundRect(midX - textWidth / 2 - badgePaddingH, midY - badgeH / 2, textWidth + badgePaddingH * 2, badgeH, 4);
+        ctx.roundRect(midX - badgeW / 2, midY - badgeH / 2, badgeW, badgeH, 4);
         ctx.fill();
         ctx.stroke();
 
@@ -417,25 +421,108 @@ export class ChartRenderer {
       }
     });
 
-    // ── 6. Draw event markers ────────────────────────────────────────────────
+    // ── 5.6. Strategy Trigger & Pullback Threshold Lines (Macro View) ───────
+    const triggerStatus = this.ctxState.getTriggerStatus ? this.ctxState.getTriggerStatus() : null;
+    if (triggerStatus && triggerStatus.trigger_price !== null && triggerStatus.trigger_price > 0) {
+      const trigPrice = triggerStatus.trigger_price;
+      const yTrig = getY(trigPrice);
+      const isBlocked = triggerStatus.state === 'BLOCKED';
+      const isPassed = triggerStatus.state === 'PASSED' || triggerStatus.current_metric_pc >= triggerStatus.required_metric_pc;
+
+      const trigColor = isPassed ? '#10b981' : isBlocked ? '#f59e0b' : '#38bdf8';
+
+      // 1. Zona sombreada de Bloqueo (entre precio actual y trigger price)
+      if (isBlocked && history.length > 0) {
+        const yCurrent = getY(history[history.length - 1].bid);
+        const topY = Math.min(yTrig, yCurrent);
+        const botY = Math.max(yTrig, yCurrent);
+        const blockH = botY - topY;
+        if (blockH > 1) {
+          ctx.save();
+          const grad = ctx.createLinearGradient(0, topY, 0, botY);
+          grad.addColorStop(0, 'rgba(239, 68, 68, 0.08)');
+          grad.addColorStop(1, 'rgba(245, 158, 11, 0.02)');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, topY, chartWidth, blockH);
+          ctx.restore();
+        }
+      }
+
+      // 2. Entry Reference Price Line
+      if (triggerStatus.entry_price > 0) {
+        const yEntry = getY(triggerStatus.entry_price);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(0, yEntry);
+        ctx.lineTo(chartWidth, yEntry);
+        ctx.stroke();
+
+        // Label on chart
+        ctx.font = chartDisplayConfig.getScaledFont(8, "'JetBrains Mono', monospace", true);
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.7)';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`Entry Ref: ${triggerStatus.entry_price.toFixed(decimals)}`, 10, yEntry - 2);
+        ctx.restore();
+      }
+
+      // 3. Dynamic Trigger Line
+      ctx.save();
+      ctx.strokeStyle = trigColor;
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, yTrig);
+      ctx.lineTo(chartWidth, yTrig);
+      ctx.stroke();
+
+      // Trigger Badge on chart canvas
+      const reqSign = triggerStatus.required_metric_pc > 0 ? '+' : '';
+      const trigLabel = `Flip Trigger: ${trigPrice.toFixed(decimals)} (${reqSign}${triggerStatus.required_metric_pc.toFixed(3)}%)`;
+      ctx.font = chartDisplayConfig.getScaledFont(8, "'JetBrains Mono', monospace", true);
+      const trigLblW = ctx.measureText(trigLabel).width + 10;
+      const trigLblH = 14;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+      ctx.strokeStyle = trigColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(chartWidth - trigLblW - 8, yTrig - trigLblH - 2, trigLblW, trigLblH, 3);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = trigColor;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(trigLabel, chartWidth - trigLblW / 2 - 8, yTrig - trigLblH / 2 - 2);
+      ctx.restore();
+    }
+
+    // ── 6. Render visible markers ────────────────────────────────────────────
     for (const m of this.activeMarkers) {
-      const clusterR = chartDisplayConfig.getScaledSize(8);
-      const triR = chartDisplayConfig.getScaledSize(5);
-      if (m.events.length > 1) {
+      if (m.events.length === 0) continue;
+      const isCluster = m.events.length > 1;
+      const clusterR = chartDisplayConfig.getScaledSize(6);
+
+      if (isCluster) {
         ctx.beginPath();
         ctx.arc(m.x, m.y, clusterR, 0, 2 * Math.PI);
-        ctx.fillStyle = '#4f46e5';
+        ctx.fillStyle = '#6366f1';
         ctx.fill();
-        ctx.strokeStyle = '#818cf8';
-        ctx.lineWidth = chartDisplayConfig.getScaledSize(1.5);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
         ctx.stroke();
+
         ctx.fillStyle = '#ffffff';
-        ctx.font = chartDisplayConfig.getScaledFont(8, "'JetBrains Mono', monospace", true);
+        ctx.font = chartDisplayConfig.getScaledFont(7, "'JetBrains Mono', monospace", true);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(m.events.length.toString(), m.x, m.y);
       } else {
         const evt = m.events[0];
+        const triR = chartDisplayConfig.getScaledSize(5);
+
         if (evt.type === 'buy') {
           ctx.beginPath();
           ctx.moveTo(m.x, m.y - triR - 1);
@@ -505,6 +592,25 @@ export class ChartRenderer {
           ctx.strokeStyle = '#ef4444';
           ctx.lineWidth = 1.5;
           ctx.stroke();
+        } else if (evt.type === 'trigger_rejected' || evt.type === 'trigger_passed') {
+          const isRej = evt.type === 'trigger_rejected';
+          const iconColor = isRej ? '#ef4444' : '#10b981';
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, chartDisplayConfig.getScaledSize(9), 0, 2 * Math.PI);
+          ctx.fillStyle = isRej ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)';
+          ctx.fill();
+          ctx.strokeStyle = iconColor;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = chartDisplayConfig.getScaledFont(8, "'JetBrains Mono', monospace", true);
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(isRej ? '⛔' : '⚡', m.x, m.y);
+          ctx.restore();
         } else if (evt.type === 'query') {
           ctx.beginPath();
           ctx.arc(m.x, m.y, chartDisplayConfig.getScaledSize(4), 0, 2 * Math.PI);
@@ -617,7 +723,7 @@ export class ChartRenderer {
     // ── 6.5. Render 10-second coin animations for closed processes ──────────
     coinAnimationManager.render(ctx, decimals);
 
-    // ── 7. Right Y-axis price flags (Bid / Ask) ──────────────────────────────
+    // ── 7. Right Y-axis price flags (Bid / Ask / Trigger / Entry) ───────────
     const latest = history[history.length - 1];
     const yBid = getY(latest.bid);
     const yAsk = getY(latest.ask);
@@ -626,15 +732,40 @@ export class ChartRenderer {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
 
+    // Entry Ref Flag
+    if (triggerStatus && triggerStatus.entry_price > 0) {
+      const yEnt = getY(triggerStatus.entry_price);
+      if (yEnt >= chartTop && yEnt <= chartBottom) {
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.7)';
+        ctx.fillRect(chartWidth + 3, yEnt - 7, rightMargin - 6, 14);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillText(`E: ${formatNum(triggerStatus.entry_price, decimals)}`, chartWidth + 6, yEnt);
+      }
+    }
+
+    // Trigger Price Flag
+    if (triggerStatus && triggerStatus.trigger_price !== null && triggerStatus.trigger_price > 0) {
+      const yTrg = getY(triggerStatus.trigger_price);
+      if (yTrg >= chartTop && yTrg <= chartBottom) {
+        const isPassed = triggerStatus.state === 'PASSED' || triggerStatus.current_metric_pc >= triggerStatus.required_metric_pc;
+        const flgColor = isPassed ? '#10b981' : '#f59e0b';
+        ctx.fillStyle = flgColor;
+        ctx.fillRect(chartWidth + 3, yTrg - 7, rightMargin - 6, 14);
+        ctx.fillStyle = '#030712';
+        ctx.fillText(`T: ${formatNum(triggerStatus.trigger_price, decimals)}`, chartWidth + 6, yTrg);
+      }
+    }
+
     ctx.fillStyle = '#10b981';
     ctx.fillRect(chartWidth + 3, yBid - 7, rightMargin - 6, 14);
     ctx.fillStyle = '#030712';
-    ctx.fillText(`B: ${latest.bid.toFixed(decimals)}`, chartWidth + 6, yBid);
+    ctx.fillText(`B: ${formatNum(latest.bid, decimals)}`, chartWidth + 6, yBid);
 
     ctx.fillStyle = '#ef4444';
     ctx.fillRect(chartWidth + 3, yAsk - 7, rightMargin - 6, 14);
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(`A: ${latest.ask.toFixed(decimals)}`, chartWidth + 6, yAsk);
+    ctx.fillText(`A: ${formatNum(latest.ask, decimals)}`, chartWidth + 6, yAsk);
+
 
     // ── 8. Telemetry bar ─────────────────────────────────────────────────────
     ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';

@@ -1,6 +1,7 @@
-import { BotInstanceData, InstanceTelemetry } from '../types';
+import { BotInstanceData, InstanceTelemetry, StrategyTriggerStatus } from '../types';
 import { getInstanceStatusColor } from '../utils/formatters';
 import { strategyManifestService } from './strategyManifestService';
+import { triggerGaugeManager } from './triggerGaugeManager';
 import { addLog } from './logger';
 
 export class InstanceService {
@@ -79,6 +80,9 @@ export class InstanceService {
             telemetry.allocated_capital,
             telemetry.available_capital
           );
+          if (telemetry.trigger_status) {
+            triggerGaugeManager.updateFromTelemetry(Number(targetId), telemetry.trigger_status);
+          }
           return telemetry;
         }
       } else {
@@ -95,6 +99,24 @@ export class InstanceService {
     }
     return null;
   }
+
+  public async fetchInstanceTriggerStatus(
+    targetId: number | string,
+    parentPort: string = '8000'
+  ): Promise<StrategyTriggerStatus | null> {
+    try {
+      const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${targetId}/trigger-status`);
+      if (res.ok) {
+        const triggerStatus: StrategyTriggerStatus = await res.json();
+        if (triggerStatus) {
+          triggerGaugeManager.setStatus(triggerStatus);
+          return triggerStatus;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
 
   public renderInstanceForm(inst: BotInstanceData): void {
     const nameEl = document.getElementById('inst-edit-name') as HTMLInputElement;

@@ -1,4 +1,4 @@
-import { HftEvent, InstanceConfig, ModificationInfo, ChasePipelineProcess } from '../types';
+import { HftEvent, InstanceConfig, ModificationInfo, ChasePipelineProcess, StrategyTriggerStatus } from '../types';
 import { formatNum, getSymbolDecimals, normalizeSymbol, cleanPublicWsSymbol } from '../utils/formatters';
 import { addLog } from './logger';
 import { dataSourceManager } from './dataSourceManager';
@@ -11,6 +11,7 @@ export interface MarketFeedCallbacks {
   onPipelinesActive: (pipelines: ChasePipelineProcess[], rawText?: string) => void;
   onSessionUpdate: (data: any) => void;
   onInstanceTelemetry: (data: any) => void;
+  onStrategyTriggerStatus?: (status: StrategyTriggerStatus) => void;
   onHftEvent: (evt: HftEvent) => void;
   onOpenOrdersRequested: () => void;
   onActivePipelinesRequested: () => void;
@@ -142,6 +143,34 @@ export class MarketFeedService {
           payload.data
         ) {
           this.callbacks.onInstanceTelemetry(payload.data);
+        } else if (payload.type === 'strategy_trigger_status' && payload.data) {
+          const triggerData: StrategyTriggerStatus = payload.data;
+          if (this.callbacks.onStrategyTriggerStatus) {
+            this.callbacks.onStrategyTriggerStatus(triggerData);
+          }
+
+          // Emit visual rejection marker if blocked
+          if (triggerData.state === 'BLOCKED') {
+            this.callbacks.onHftEvent({
+              e: 'HFT_EVENT',
+              type: 'trigger_rejected',
+              time: triggerData.timestamp ? new Date(triggerData.timestamp).getTime() : Date.now(),
+              price: triggerData.current_price,
+              symbol: triggerData.symbol || config.symbol,
+              detail: `Pullback: ${triggerData.current_metric_pc.toFixed(4)}% < Requerido: +${triggerData.required_metric_pc.toFixed(4)}% | Falta: +${triggerData.delta_remaining_pc.toFixed(4)}%`,
+              triggerData: triggerData,
+            });
+          } else if (triggerData.state === 'PASSED') {
+            this.callbacks.onHftEvent({
+              e: 'HFT_EVENT',
+              type: 'trigger_passed',
+              time: triggerData.timestamp ? new Date(triggerData.timestamp).getTime() : Date.now(),
+              price: triggerData.current_price,
+              symbol: triggerData.symbol || config.symbol,
+              detail: `Pullback superó el umbral requerido (+${triggerData.required_metric_pc.toFixed(4)}%)`,
+              triggerData: triggerData,
+            });
+          }
         } else if (payload.type === 'query_log' && payload.data) {
           const d = payload.data;
           const isCancelQuery =

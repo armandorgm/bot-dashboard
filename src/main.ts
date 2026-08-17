@@ -20,6 +20,7 @@ import { strategyManifestService } from './services/strategyManifestService';
 import { instanceService } from './services/instanceService';
 import { globalOverviewManager } from './services/globalOverviewManager';
 import { MarketFeedService } from './services/marketFeedService';
+import { triggerGaugeManager } from './services/triggerGaugeManager';
 
 // ── Service Instantiations ──────────────────────────────────────────────────
 const sessionMetrics = new SessionMetricsTracker();
@@ -65,6 +66,7 @@ const chartRenderer = new ChartRenderer({
   getHistory: () => history,
   getHftEvents: () => hftEvents,
   getActiveChaseProcesses: () => activeChaseProcesses,
+  getTriggerStatus: () => triggerGaugeManager.getStatus(),
   getMaxPoints: () => maxPoints,
   getHz: () => marketFeed.getHz(),
 });
@@ -78,6 +80,18 @@ const marketFeed = new MarketFeedService({
     updatePnLDisplay(bid, ask);
     chartRenderer.draw();
   },
+  onStrategyTriggerStatus: (status) => {
+    const currentSelected = instanceService.getSelectedInstanceId();
+    const currentTargetId =
+      currentSelected !== null ? currentSelected : parseInt(config.instance_id || '1', 10);
+    if (status.instance_id === currentTargetId || !currentSelected) {
+      triggerGaugeManager.setStatus(status);
+      chartRenderer.draw();
+    } else {
+      triggerGaugeManager.updateFromTelemetry(status.instance_id, status);
+    }
+  },
+
   onStatsUpdate: (d) => {
     const placedSuccessValEl = document.getElementById('placed-success-val');
     const placedFailedValEl = document.getElementById('placed-failed-val');
@@ -538,7 +552,9 @@ function switchActiveInstance(instanceId: string | number) {
   openOrdersManager.fetchOpenOrders(config.parent_api_port, target.symbol);
   fetchActivePipelines();
   instanceService.fetchInstanceTelemetry(target.id, config.parent_api_port);
+  instanceService.fetchInstanceTriggerStatus(target.id, config.parent_api_port);
 }
+
 
 // ── Application Bootstrap ───────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
@@ -856,13 +872,17 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Initial Sync & Interval Timers
   fetchActivePipelines();
   instanceService.fetchInstanceTelemetry(config.instance_id, config.parent_api_port);
+  instanceService.fetchInstanceTriggerStatus(config.instance_id, config.parent_api_port);
 
   setInterval(() => {
     if (!document.hidden) {
+      const activeId = instanceService.getSelectedInstanceId() || config.instance_id;
       fetchActivePipelines();
-      instanceService.fetchInstanceTelemetry(config.instance_id, config.parent_api_port);
+      instanceService.fetchInstanceTelemetry(activeId, config.parent_api_port);
+      instanceService.fetchInstanceTriggerStatus(activeId, config.parent_api_port);
     }
   }, 60000);
+
 
   // Initialize Data Source Controls, Modal Listeners and Global Overview
   dataSourceManager.initControls();

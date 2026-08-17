@@ -69,6 +69,8 @@ export class TooltipManager {
       if (typeUpper.includes('BUY')) typeColor = '#10b981';
       else if (typeUpper.includes('SELL')) typeColor = '#ef4444';
       else if (typeUpper.includes('CANCEL')) typeColor = '#f59e0b';
+      else if (evt.type === 'trigger_rejected') typeColor = '#ef4444';
+      else if (evt.type === 'trigger_passed') typeColor = '#10b981';
 
       let chaseBadgeHtml = '';
       if (evt.orderId) {
@@ -96,6 +98,11 @@ export class TooltipManager {
           const roleColor = role === 'E' ? '#06b6d4' : '#10b981';
           chaseBadgeHtml = `<span style="background: ${roleColor}22; color: ${roleColor}; border: 1px solid ${roleColor}66; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: bold;">CHASE #${procId} (${roleLbl})</span>`;
         }
+      } else if (evt.type === 'trigger_rejected' || evt.type === 'trigger_passed') {
+        const badgeBg = evt.type === 'trigger_rejected' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)';
+        const badgeBorder = evt.type === 'trigger_rejected' ? '#ef4444' : '#10b981';
+        const badgeLbl = evt.type === 'trigger_rejected' ? '⛔ PREFLIGHT RECHAZADO' : '⚡ TRIGGER AUTORIZADO';
+        chaseBadgeHtml = `<span style="background: ${badgeBg}; color: ${typeColor}; border: 1px solid ${badgeBorder}; padding: 2px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 800;">${badgeLbl}</span>`;
       }
 
       const borderTop =
@@ -103,30 +110,46 @@ export class TooltipManager {
           ? 'border-top: 1px dashed rgba(255,255,255,0.08); margin-top: 6px; padding-top: 6px;'
           : '';
 
+      const isTriggerEvt = evt.type === 'trigger_rejected' || evt.type === 'trigger_passed';
+      const trg = evt.triggerData;
+
       content += `
         <div style="${borderTop} font-size: 11px; line-height: 1.4;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-            <span style="color: ${typeColor}; font-weight: bold;">${typeUpper}</span>
+            <span style="color: ${typeColor}; font-weight: bold;">${isTriggerEvt ? (evt.type === 'trigger_rejected' ? 'PREFLIGHT BLOCKED' : 'TRIGGER PASSED') : typeUpper}</span>
             <span style="color: #94a3b8; font-size: 10px;">${timeStr}</span>
           </div>
           ${chaseBadgeHtml ? `<div style="margin-bottom: 3px;">${chaseBadgeHtml}</div>` : ''}
           <table style="width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 2px; color: #cbd5e1;">
             ${
-              evt.orderId
-                ? `<tr><td style="color: #64748b; padding-right: 6px; width: 60px;">Order ID:</td><td style="font-weight: 600; font-family: monospace; color: #f1f5f9;">${evt.orderId}</td></tr>`
-                : ''
-            }
-            <tr><td style="color: #64748b; padding-right: 6px; width: 60px;">Precio:</td><td style="color: #38bdf8; font-weight: 600;">$${priceStr}</td></tr>
-            <tr><td style="color: #64748b; padding-right: 6px; width: 60px;">Cantidad:</td><td style="color: #f1f5f9;">${qtyStr}</td></tr>
-            ${
-              evt.detail
-                ? `<tr><td style="color: #64748b; padding-right: 6px; vertical-align: top; width: 60px;">Detalle:</td><td style="color: #94a3b8; word-break: break-word;">${evt.detail}</td></tr>`
-                : ''
+              isTriggerEvt && trg
+                ? `
+                  <tr><td style="color: #64748b; padding-right: 6px;">Pullback:</td><td style="color: ${evt.type === 'trigger_rejected' ? '#ef4444' : '#10b981'}; font-weight: 700;">${trg.current_metric_pc > 0 ? '+' : ''}${trg.current_metric_pc.toFixed(4)}% <span style="color: #94a3b8; font-weight: normal;">(Req: +${trg.required_metric_pc.toFixed(4)}%)</span></td></tr>
+                  <tr><td style="color: #64748b; padding-right: 6px;">Precio Actual:</td><td style="color: #38bdf8; font-weight: 600;">$${trg.current_price.toFixed(decimals)}</td></tr>
+                  <tr><td style="color: #64748b; padding-right: 6px;">Target Flip:</td><td style="color: #f59e0b; font-weight: 600;">$${trg.trigger_price ? trg.trigger_price.toFixed(decimals) : '--'}</td></tr>
+                  ${trg.entry_price > 0 ? `<tr><td style="color: #64748b; padding-right: 6px;">Entry Ref:</td><td style="color: #94a3b8;">$${trg.entry_price.toFixed(decimals)}</td></tr>` : ''}
+                  ${evt.type === 'trigger_rejected' ? `<tr><td style="color: #64748b; padding-right: 6px;">Falta:</td><td style="color: #f87171; font-weight: 700;">+${trg.delta_remaining_pc.toFixed(4)}% para autorizar flip</td></tr>` : ''}
+                `
+                : `
+                  ${
+                    evt.orderId
+                      ? `<tr><td style="color: #64748b; padding-right: 6px; width: 60px;">Order ID:</td><td style="font-weight: 600; font-family: monospace; color: #f1f5f9;">${evt.orderId}</td></tr>`
+                      : ''
+                  }
+                  <tr><td style="color: #64748b; padding-right: 6px; width: 60px;">Precio:</td><td style="color: #38bdf8; font-weight: 600;">$${priceStr}</td></tr>
+                  <tr><td style="color: #64748b; padding-right: 6px; width: 60px;">Cantidad:</td><td style="color: #f1f5f9;">${qtyStr}</td></tr>
+                  ${
+                    evt.detail
+                      ? `<tr><td style="color: #64748b; padding-right: 6px; vertical-align: top; width: 60px;">Detalle:</td><td style="color: #94a3b8; word-break: break-word;">${evt.detail}</td></tr>`
+                      : ''
+                  }
+                `
             }
           </table>
         </div>
       `;
     });
+
 
     content += `</div>`;
     this.tooltipEl.innerHTML = content;

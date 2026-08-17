@@ -13,13 +13,14 @@ export interface TickData {
 
 export interface HftEvent {
   e: 'HFT_EVENT';
-  type: 'buy' | 'sell' | 'cancel' | 'query' | 'buy_placed' | 'sell_placed' | 'cancel_failed' | 'cancel_buy' | 'cancel_sell' | 'cancel_buy_failed' | 'cancel_sell_failed';
+  type: 'buy' | 'sell' | 'cancel' | 'query' | 'buy_placed' | 'sell_placed' | 'cancel_failed' | 'cancel_buy' | 'cancel_sell' | 'cancel_buy_failed' | 'cancel_sell_failed' | 'trigger_rejected' | 'trigger_passed';
   time: number;
   price?: number;
   qty?: number;
   symbol: string;
   orderId?: string;
   detail: string;
+  triggerData?: StrategyTriggerStatus;
 }
 
 export interface VisualMarker {
@@ -68,6 +69,32 @@ export interface ModificationInfo {
   new_price: number | null;
 }
 
+export type TriggerState = 'BLOCKED' | 'PASSED' | 'READY' | 'NO_DATA';
+export type PositionSide = 'LONG' | 'SHORT' | 'FLAT';
+
+export interface StrategyTriggerStatus {
+  instance_id: number;
+  symbol: string;
+  strategy: string;
+  condition_name?: string;
+  state: TriggerState;
+  position_side: PositionSide;
+  entry_price: number;
+  current_price: number;
+  trigger_price: number | null;
+  current_metric_pc: number;
+  required_metric_pc: number;
+  delta_remaining_pc: number;
+  multiplier?: number;
+  timestamp?: string;
+  updated_at?: number;
+}
+
+export interface WsBusinessNotificationMessage {
+  type: 'strategy_trigger_status' | 'order_update' | 'balance_update' | 'connection_established' | string;
+  data: any;
+}
+
 export interface InstanceTelemetry {
   name: string;
   symbol: string;
@@ -81,6 +108,7 @@ export interface InstanceTelemetry {
   total_open_orders?: number;
   realized_pnl?: number;
   unrealized_pnl?: number;
+  trigger_status?: StrategyTriggerStatus;
 }
 
 export type AllInstancesTelemetryResponse = Record<string | number, InstanceTelemetry>;
@@ -96,6 +124,7 @@ export interface BotInstanceData {
   created_at?: string;
   status: string;
   params: Record<string, any>;
+  trigger_status?: StrategyTriggerStatus;
 }
 
 export interface StrategyManifestItem {
@@ -144,5 +173,6 @@ export interface GlobalOverviewResponse {
     win_rate_pc: number;
     traded_volume: number;
     created_at: string;
+    trigger_status?: StrategyTriggerStatus;
   }>;
 }
