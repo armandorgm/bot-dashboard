@@ -8,9 +8,23 @@ import { addLog } from './logger';
 export class OpenOrdersManager {
   private openOrders: OpenOrder[] = [];
   private openOrdersWrapperEl: HTMLElement | null = null;
+  private openOrdersTitleEl: HTMLElement | null = null;
 
-  public init(wrapperId: string = 'open-orders-wrapper'): void {
+  public init(wrapperId: string = 'open-orders-wrapper', titleId: string = 'open-orders-title'): void {
     this.openOrdersWrapperEl = document.getElementById(wrapperId);
+    this.openOrdersTitleEl = document.getElementById(titleId);
+    this.updateTitle();
+  }
+
+  public updateTitle(): void {
+    if (!this.openOrdersTitleEl) {
+      this.openOrdersTitleEl =
+        document.getElementById('open-orders-title') ||
+        document.querySelector('.open-orders-section .section-header h2');
+    }
+    if (this.openOrdersTitleEl) {
+      this.openOrdersTitleEl.textContent = `OPEN ORDERS(${this.openOrders.length})`;
+    }
   }
 
   public getOrders(): OpenOrder[] {
@@ -19,10 +33,12 @@ export class OpenOrdersManager {
 
   public setOrders(orders: OpenOrder[]): void {
     this.openOrders = orders;
+    this.updateTitle();
   }
 
   public removeOrder(orderId: string): void {
     this.openOrders = this.openOrders.filter((o) => o.id !== orderId);
+    this.updateTitle();
   }
 
   public async fetchOpenOrders(parentPort: string, activeSymbol: string): Promise<OpenOrder[]> {
@@ -60,6 +76,8 @@ export class OpenOrdersManager {
   }
 
   public render(activeSymbol: string): void {
+    this.updateTitle();
+
     if (!this.openOrdersWrapperEl) {
       this.openOrdersWrapperEl = document.getElementById('open-orders-wrapper');
       if (!this.openOrdersWrapperEl) return;

@@ -22,6 +22,7 @@ import { globalOverviewManager } from './services/globalOverviewManager';
 import { MarketFeedService } from './services/marketFeedService';
 import { triggerGaugeManager } from './services/triggerGaugeManager';
 import { runTriggerGaugeVerification } from './services/triggerGaugeManager.test';
+import { runOpenOrdersManagerVerification } from './services/openOrdersManager.test';
 
 // ── Service Instantiations ──────────────────────────────────────────────────
 const sessionMetrics = new SessionMetricsTracker();
@@ -590,8 +591,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   tooltipManager.init();
   try {
     runTriggerGaugeVerification();
+    runOpenOrdersManagerVerification();
   } catch (err) {
-    console.error('[TriggerGaugeManager] Verification error:', err);
+    console.error('[OpenOrdersManager/TriggerGaugeManager] Verification error:', err);
   }
   triggerGaugeManager.render();
 
