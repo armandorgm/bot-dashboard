@@ -164,6 +164,14 @@ const marketFeed = new MarketFeedService({
       currentSelected !== null ? currentSelected : parseInt(config.instance_id || '1', 10);
     if (d.instance_id === undefined || String(d.instance_id) === String(currentTargetId)) {
       instanceService.updateInstanceCapitalDisplay(d.used_capital, d.allocated_capital, d.available_capital);
+      const pnlVal = d.lifetime_pnl ?? d.total_pnl ?? d.realized_pnl;
+      if (pnlVal !== undefined) {
+        const inst = instanceService.findInstance(currentTargetId);
+        if (inst) inst.lifetime_pnl = pnlVal;
+      }
+      const latestBid = history.length > 0 ? history[history.length - 1].bid : 0;
+      const latestAsk = history.length > 0 ? history[history.length - 1].ask : 0;
+      updatePnLDisplay(latestBid, latestAsk);
     }
   },
   onHftEvent: (evt) => {

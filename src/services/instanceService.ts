@@ -83,6 +83,11 @@ export class InstanceService {
           if (telemetry.trigger_status) {
             triggerGaugeManager.updateFromTelemetry(Number(targetId), telemetry.trigger_status);
           }
+          const match = this.loadedInstances.find((i) => String(i.id) === String(targetId));
+          const pnlVal = telemetry.lifetime_pnl ?? (telemetry as any).total_pnl ?? telemetry.realized_pnl;
+          if (match && pnlVal !== undefined) {
+            match.lifetime_pnl = pnlVal;
+          }
           return telemetry;
         }
       } else {
