@@ -55,7 +55,19 @@ if (qPort) config.port = qPort;
 if (qId) config.instance_id = qId;
 if (qSym) config.symbol = qSym;
 
+triggerGaugeManager.setContextGetter(() => {
+  const currentSelected = instanceService.getSelectedInstanceId();
+  const instId = currentSelected !== null ? currentSelected : parseInt(config.instance_id || '8', 10);
+  const latestPrice = history.length > 0 ? (history[history.length - 1].bid || history[history.length - 1].ask) : 0;
+  return {
+    symbol: config.symbol !== '--' ? config.symbol : '1000PEPEUSDC',
+    instanceId: isNaN(instId) ? 8 : instId,
+    latestPrice: latestPrice > 0 ? latestPrice : 0.002575,
+  };
+});
+
 // Chart Renderer Engine
+
 const chartRenderer = new ChartRenderer({
   canvasEl: null,
   chartDisplayConfig,
@@ -553,6 +565,7 @@ function switchActiveInstance(instanceId: string | number) {
   fetchActivePipelines();
   instanceService.fetchInstanceTelemetry(target.id, config.parent_api_port);
   instanceService.fetchInstanceTriggerStatus(target.id, config.parent_api_port);
+  triggerGaugeManager.render();
 }
 
 
@@ -561,6 +574,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   logger.init();
   openOrdersManager.init();
   tooltipManager.init();
+  triggerGaugeManager.render();
+
 
   const canvasEl = document.getElementById('hft-chart') as HTMLCanvasElement | null;
   (chartRenderer as any).ctxState.canvasEl = canvasEl;

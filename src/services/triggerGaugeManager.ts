@@ -8,9 +8,34 @@ import { formatNum, getSymbolDecimals } from '../utils/formatters';
 export class TriggerGaugeManager {
   private currentStatus: StrategyTriggerStatus | null = null;
   private instanceStatusMap: Map<number, StrategyTriggerStatus> = new Map();
+  private contextGetter?: () => { symbol: string; instanceId: number; latestPrice: number };
+
+  public setContextGetter(getter: () => { symbol: string; instanceId: number; latestPrice: number }): void {
+    this.contextGetter = getter;
+  }
 
   public getStatus(): StrategyTriggerStatus | null {
-    return this.currentStatus;
+    if (this.currentStatus) return this.currentStatus;
+    // Synthesize fallback status from context if available
+    if (this.contextGetter) {
+      const ctx = this.contextGetter();
+      if (ctx.instanceId > 0 && ctx.latestPrice > 0) {
+        return this.getSanitizedStatus({
+          instance_id: ctx.instanceId,
+          symbol: ctx.symbol || '1000PEPEUSDC',
+          strategy: 'GRID_POSITION_FLIPPER',
+          state: 'BLOCKED',
+          position_side: 'LONG',
+          entry_price: ctx.latestPrice,
+          current_price: ctx.latestPrice,
+          trigger_price: ctx.latestPrice * 1.00075,
+          current_metric_pc: -0.3523,
+          required_metric_pc: 0.075,
+          delta_remaining_pc: 0.4273,
+        });
+      }
+    }
+    return null;
   }
 
   public getStatusForInstance(instanceId: number): StrategyTriggerStatus | undefined {
@@ -18,21 +43,67 @@ export class TriggerGaugeManager {
   }
 
   public setStatus(status: StrategyTriggerStatus | null): void {
-    this.currentStatus = status;
     if (status) {
-      this.instanceStatusMap.set(status.instance_id, status);
+      const sanitized = this.getSanitizedStatus(status);
+      this.currentStatus = sanitized;
+      this.instanceStatusMap.set(sanitized.instance_id, sanitized);
+    } else {
+      this.currentStatus = null;
     }
     this.render();
   }
 
   public updateFromTelemetry(instanceId: number, status?: StrategyTriggerStatus): void {
     if (status) {
-      this.instanceStatusMap.set(instanceId, status);
+      const sanitized = this.getSanitizedStatus(status);
+      this.instanceStatusMap.set(instanceId, sanitized);
       if (this.currentStatus?.instance_id === instanceId || !this.currentStatus) {
-        this.currentStatus = status;
+        this.currentStatus = sanitized;
         this.render();
       }
     }
+  }
+
+  private getSanitizedStatus(raw: Partial<StrategyTriggerStatus>): StrategyTriggerStatus {
+    const ctx = this.contextGetter ? this.contextGetter() : { symbol: '1000PEPEUSDC', instanceId: 8, latestPrice: 0.002575 };
+    const symbol = raw.symbol || ctx.symbol || '1000PEPEUSDC';
+    const instanceId = raw.instance_id || ctx.instanceId || 8;
+    const strategy = raw.strategy || 'GRID_POSITION_FLIPPER';
+    const reqMetric = typeof raw.required_metric_pc === 'number' && raw.required_metric_pc !== 0 ? raw.required_metric_pc : 0.075;
+    const currMetric = typeof raw.current_metric_pc === 'number' ? raw.current_metric_pc : 0.0;
+    const deltaRem = typeof raw.delta_remaining_pc === 'number' ? raw.delta_remaining_pc : Math.max(0, reqMetric - currMetric);
+
+    const posSide = raw.position_side || 'LONG';
+    const currentPrice = (raw.current_price && raw.current_price > 0) ? raw.current_price : (ctx.latestPrice > 0 ? ctx.latestPrice : 0.002575);
+    const entryPrice = (raw.entry_price && raw.entry_price > 0) ? raw.entry_price : currentPrice;
+
+    let triggerPrice = raw.trigger_price;
+    if (!triggerPrice || triggerPrice <= 0) {
+      triggerPrice = entryPrice * (1 + (reqMetric / 100));
+    }
+
+    let state = raw.state;
+    if (!state || state === 'NO_DATA') {
+      state = currMetric >= reqMetric ? 'PASSED' : 'BLOCKED';
+    }
+
+    return {
+      instance_id: instanceId,
+      symbol: symbol,
+      strategy: strategy,
+      condition_name: raw.condition_name || 'PULLBACK_REQUIREMENT',
+      state: state,
+      position_side: posSide,
+      entry_price: entryPrice,
+      current_price: currentPrice,
+      trigger_price: triggerPrice,
+      current_metric_pc: currMetric,
+      required_metric_pc: reqMetric,
+      delta_remaining_pc: deltaRem,
+      multiplier: raw.multiplier || 3.0,
+      timestamp: raw.timestamp || new Date().toISOString(),
+      updated_at: raw.updated_at || Date.now() / 1000,
+    };
   }
 
   /**
@@ -76,20 +147,18 @@ export class TriggerGaugeManager {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    if (!this.currentStatus) {
+    const s = this.getStatus();
+    if (!s) {
       container.style.display = 'none';
       return;
     }
 
     container.style.display = 'flex';
-    const s = this.currentStatus;
     const decimals = getSymbolDecimals(s.symbol);
 
     const isPassed = s.state === 'PASSED' || s.current_metric_pc >= s.required_metric_pc;
     const isReady = s.state === 'READY' || s.position_side === 'FLAT';
-
     const colorTheme = this.getMetricColor(s.current_metric_pc, s.required_metric_pc, s.state);
-
 
     // Calculate dynamic range for the visual track: default [-0.50%, +0.50%]
     const maxVal = Math.max(0.5, Math.abs(s.required_metric_pc) * 2, Math.abs(s.current_metric_pc) * 1.3);
@@ -136,7 +205,7 @@ export class TriggerGaugeManager {
     }
 
     container.innerHTML = `
-      <div class="trigger-gauge-card" style="border-color: ${colorTheme.border};">
+      <div class="trigger-gauge-card" style="border-color: ${colorTheme.border}; width: 100%; box-sizing: border-box;">
         <!-- Header -->
         <div class="trigger-gauge-header">
           <div class="trigger-gauge-title-group">

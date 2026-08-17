@@ -2,27 +2,30 @@
  * Formatting and normalization utilities.
  */
 
-export function formatNum(num: number, decimals: number = 6): string {
+export function formatNum(num: number | null | undefined, decimals: number = 6): string {
+  if (num === null || num === undefined || isNaN(num)) return '--';
   return num.toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
 }
 
-export function getSymbolDecimals(symbol: string): number {
-  return symbol.toLowerCase().includes('pepe') ? 8 : 4;
+export function getSymbolDecimals(symbol?: string): number {
+  return (symbol || '').toLowerCase().includes('pepe') ? 8 : 4;
 }
 
-export function normalizeSymbol(symbol: string): string {
+export function normalizeSymbol(symbol?: string): string {
+  if (!symbol) return '';
   return symbol.split(':')[0].replace('/', '').replace(':', '').toUpperCase();
 }
 
-export function cleanPublicWsSymbol(symbol: string): string {
+export function cleanPublicWsSymbol(symbol?: string): string {
+  if (!symbol) return '';
   const baseSymbol = symbol.split(':')[0];
   return baseSymbol.replace('/', '').toLowerCase();
 }
 
-export function getInstanceStatusColor(status: string): string {
+export function getInstanceStatusColor(status?: string): string {
   switch ((status || '').toUpperCase()) {
     case 'ACTIVE':
     case 'RUNNING':
