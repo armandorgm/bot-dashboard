@@ -1,7 +1,8 @@
 import { HftEvent, InstanceConfig, ModificationInfo, ChasePipelineProcess, StrategyTriggerStatus } from '../types';
-import { formatNum, getSymbolDecimals, normalizeSymbol, cleanPublicWsSymbol } from '../utils/formatters';
+import { getSymbolDecimals, normalizeSymbol, cleanPublicWsSymbol } from '../utils/formatters';
 import { addLog } from './logger';
 import { dataSourceManager } from './dataSourceManager';
+import { metricsDisplayController } from './metricsDisplayController';
 
 export interface MarketFeedCallbacks {
   getConfig: () => InstanceConfig;
@@ -63,26 +64,18 @@ export class MarketFeedService {
 
         const bidVal = Number(data.b);
         const askVal = Number(data.a);
-        const spread = askVal - bidVal;
 
         const nowMs = performance.now();
         this.tickTimes.push(nowMs);
-        this.tickTimes = this.tickTimes.filter((t) => nowMs - t < 1000);
+        while (this.tickTimes.length > 0 && nowMs - this.tickTimes[0] >= 1000) {
+          this.tickTimes.shift();
+        }
         this.hz = this.tickTimes.length;
 
-        const feedRateValEl = document.getElementById('feed-rate-val');
-        if (feedRateValEl) feedRateValEl.innerText = `${this.hz} Hz`;
-
-        if (!dataSourceManager.isEnabled('ticker')) return;
-
-        const decimals = getSymbolDecimals(this.callbacks.getConfig().symbol);
-        const bidValEl = document.getElementById('bid-val');
-        const askValEl = document.getElementById('ask-val');
-        const spreadValEl = document.getElementById('spread-val');
-
-        if (bidValEl) bidValEl.innerText = formatNum(bidVal, decimals);
-        if (askValEl) askValEl.innerText = formatNum(askVal, decimals);
-        if (spreadValEl) spreadValEl.innerText = formatNum(spread, decimals);
+        if (dataSourceManager.isEnabled('ticker')) {
+          const decimals = getSymbolDecimals(this.callbacks.getConfig().symbol);
+          metricsDisplayController.setTicker(bidVal, askVal, this.hz, decimals);
+        }
 
         this.callbacks.onTicker(bidVal, askVal, this.hz);
       } catch (err) {

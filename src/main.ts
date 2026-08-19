@@ -21,13 +21,15 @@ import { instanceService } from './services/instanceService';
 import { globalOverviewManager } from './services/globalOverviewManager';
 import { MarketFeedService } from './services/marketFeedService';
 import { triggerGaugeManager } from './services/triggerGaugeManager';
+import { metricsDisplayController } from './services/metricsDisplayController';
 import { runTriggerGaugeVerification } from './services/triggerGaugeManager.test';
 import { runOpenOrdersManagerVerification } from './services/openOrdersManager.test';
+import { runMetricsDisplayControllerVerification } from './services/metricsDisplayController.test';
 
 // ── Service Instantiations ──────────────────────────────────────────────────
 const sessionMetrics = new SessionMetricsTracker();
 const coinAnimationManager = new CoinAnimationManager();
-const chartDisplayConfig = new ChartDisplayConfig(() => chartRenderer.draw());
+const chartDisplayConfig = new ChartDisplayConfig(() => chartRenderer.requestRender());
 const chartViewportController = new ChartViewportController(110);
 const orderProcessRegistry = new OrderProcessRegistry();
 
@@ -105,7 +107,7 @@ const marketFeed = new MarketFeedService({
     chartRenderer.pruneHistory(history);
     updatePnLDisplay(bid, ask);
     triggerGaugeManager.onTick(bid, ask);
-    chartRenderer.draw();
+    chartRenderer.requestRender();
   },
   onStrategyTriggerStatus: (status) => {
     const currentSelected = instanceService.getSelectedInstanceId();
@@ -113,7 +115,7 @@ const marketFeed = new MarketFeedService({
       currentSelected !== null ? currentSelected : parseInt(config.instance_id || '1', 10);
     if (status.instance_id === currentTargetId || !currentSelected) {
       triggerGaugeManager.setStatus(status);
-      chartRenderer.draw();
+      chartRenderer.requestRender();
     } else {
       triggerGaugeManager.updateFromTelemetry(status.instance_id, status);
     }
@@ -177,7 +179,7 @@ const marketFeed = new MarketFeedService({
   onHftEvent: (evt) => {
     hftEvents.push(evt);
     if (hftEvents.length > 500) hftEvents.shift();
-    chartRenderer.draw();
+    chartRenderer.requestRender();
   },
   onOpenOrdersRequested: () => openOrdersManager.fetchOpenOrders(config.parent_api_port, config.symbol),
   onActivePipelinesRequested: () => fetchActivePipelines(),
@@ -213,68 +215,19 @@ function updatePnLDisplay(currentBid: number, currentAsk: number) {
   const startTimeMs = sessionStartTimeMap.get(targetInstId);
   const unrealizedPnL = sessionMetrics.calculateUnrealizedPnL(currentBid, currentAsk, config.symbol, targetInstId, startTimeMs);
 
-  const sessionPnLValEl = document.getElementById('session-pnl-val');
-  if (sessionPnLValEl) {
-    const sign = realizedPnL > 0 ? '+' : '';
-    sessionPnLValEl.innerText = `$${sign}${realizedPnL.toFixed(4)}`;
-    sessionPnLValEl.className = 'card-price val-primary ' + (realizedPnL > 0 ? 'pnl-positive' : realizedPnL < 0 ? 'pnl-negative' : 'pnl-neutral');
-  }
-
   const loadedInsts = instanceService.getLoadedInstances();
   const currentInstDataForNet = loadedInsts.find((i) => i.id === targetInstId);
   const instanceLifetimeRealized = currentInstDataForNet ? currentInstDataForNet.lifetime_pnl || 0 : realizedPnL;
-
-  const instanceTotalRealizedValEl = document.getElementById('instance-total-realized-val');
-  if (instanceTotalRealizedValEl) {
-    const totRealSign = instanceLifetimeRealized > 0 ? '+' : '';
-    instanceTotalRealizedValEl.innerText = `$${totRealSign}${instanceLifetimeRealized.toFixed(4)}`;
-    instanceTotalRealizedValEl.className = 'val-secondary ' + (instanceLifetimeRealized > 0 ? 'pnl-positive' : instanceLifetimeRealized < 0 ? 'pnl-negative' : 'pnl-neutral');
-  }
-
-  const unrealizedPnLValEl = document.getElementById('unrealized-pnl-val');
-  if (unrealizedPnLValEl) {
-    const sign = unrealizedPnL > 0 ? '+' : '';
-    unrealizedPnLValEl.innerText = `$${sign}${unrealizedPnL.toFixed(4)}`;
-    unrealizedPnLValEl.className = 'card-price val-primary ' + (unrealizedPnL > 0 ? 'pnl-positive' : unrealizedPnL < 0 ? 'pnl-negative' : 'pnl-neutral');
-  }
-
   const totalInstanceUnrealized = sessionMetrics.calculateUnrealizedPnL(currentBid, currentAsk, config.symbol, targetInstId);
-  const instanceTotalUnrealizedValEl = document.getElementById('instance-total-unrealized-val');
-  if (instanceTotalUnrealizedValEl) {
-    const totSign = totalInstanceUnrealized > 0 ? '+' : '';
-    instanceTotalUnrealizedValEl.innerText = `$${totSign}${totalInstanceUnrealized.toFixed(4)}`;
-    instanceTotalUnrealizedValEl.className = 'val-secondary ' + (totalInstanceUnrealized > 0 ? 'pnl-positive' : totalInstanceUnrealized < 0 ? 'pnl-negative' : 'pnl-neutral');
-  }
 
   const sessionNetTotal = realizedPnL + unrealizedPnL;
   const instanceLifetimeNetTotal = instanceLifetimeRealized + totalInstanceUnrealized;
-
-  const sessionNetTotalValEl = document.getElementById('session-net-total-val');
-  if (sessionNetTotalValEl) {
-    const netSign = sessionNetTotal > 0 ? '+' : '';
-    sessionNetTotalValEl.innerText = `$${netSign}${sessionNetTotal.toFixed(4)}`;
-    sessionNetTotalValEl.className = 'card-price val-primary ' + (sessionNetTotal > 0 ? 'pnl-positive' : sessionNetTotal < 0 ? 'pnl-negative' : 'pnl-neutral');
-  }
-
-  const instanceTotalNetValEl = document.getElementById('instance-total-net-val');
-  if (instanceTotalNetValEl) {
-    const totNetSign = instanceLifetimeNetTotal > 0 ? '+' : '';
-    instanceTotalNetValEl.innerText = `$${totNetSign}${instanceLifetimeNetTotal.toFixed(4)}`;
-    instanceTotalNetValEl.className = 'val-secondary ' + (instanceLifetimeNetTotal > 0 ? 'pnl-positive' : instanceLifetimeNetTotal < 0 ? 'pnl-negative' : 'pnl-neutral');
-  }
 
   const sessionStartMs = sessionStartTimeMap.get(targetInstId) || Date.now();
   const rawElapsedMs = Date.now() - sessionStartMs;
   const elapsedMs = Math.max(60000, rawElapsedMs > 0 ? rawElapsedMs : 60000);
   const elapsedHours = elapsedMs / (1000 * 3600);
   const pnlPerHour = sessionNetTotal / elapsedHours;
-
-  const pnlRateValEl = document.getElementById('pnl-rate-val');
-  if (pnlRateValEl) {
-    const sign = pnlPerHour > 0 ? '+' : '';
-    pnlRateValEl.innerText = `$${sign}${pnlPerHour.toFixed(4)} /h`;
-    pnlRateValEl.className = 'card-price val-primary ' + (pnlPerHour > 0 ? 'pnl-positive' : pnlPerHour < 0 ? 'pnl-negative' : 'pnl-neutral');
-  }
 
   const instCreatedTs =
     currentInstDataForNet && (currentInstDataForNet as any).created_at
@@ -284,12 +237,17 @@ function updatePnLDisplay(currentBid: number, currentAsk: number) {
   const totalElapsedHours = Math.max(0.0166, (rawTotalElapsedMs > 0 ? rawTotalElapsedMs : elapsedMs) / (1000 * 3600));
   const lifetimePnlPerHour = instanceLifetimeNetTotal / totalElapsedHours;
 
-  const instanceTotalPnlRateValEl = document.getElementById('instance-total-pnl-rate-val');
-  if (instanceTotalPnlRateValEl) {
-    const totPnlRateSign = lifetimePnlPerHour > 0 ? '+' : '';
-    instanceTotalPnlRateValEl.innerText = `$${totPnlRateSign}${lifetimePnlPerHour.toFixed(4)} /h`;
-    instanceTotalPnlRateValEl.className = 'val-secondary ' + (lifetimePnlPerHour > 0 ? 'pnl-positive' : lifetimePnlPerHour < 0 ? 'pnl-negative' : 'pnl-neutral');
-  }
+  // Dispatch to batched dirty-checking display controller
+  metricsDisplayController.setPnLState({
+    realizedPnL,
+    unrealizedPnL,
+    lifetimeRealized: instanceLifetimeRealized,
+    lifetimeUnrealized: totalInstanceUnrealized,
+    sessionNetTotal,
+    instanceLifetimeNetTotal,
+    pnlPerHour,
+    lifetimePnlPerHour,
+  });
 
   const sessionTimeValEl = document.getElementById('session-time-val');
   if (sessionTimeValEl) {
@@ -595,13 +553,15 @@ function switchActiveInstance(instanceId: string | number) {
 // ── Application Bootstrap ───────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
   logger.init();
+  metricsDisplayController.init();
   openOrdersManager.init();
   tooltipManager.init();
   try {
     runTriggerGaugeVerification();
     runOpenOrdersManagerVerification();
+    runMetricsDisplayControllerVerification();
   } catch (err) {
-    console.error('[OpenOrdersManager/TriggerGaugeManager] Verification error:', err);
+    console.error('[OpenOrdersManager/TriggerGaugeManager/MetricsDisplayController] Verification error:', err);
   }
   triggerGaugeManager.render();
 

@@ -225,6 +225,15 @@ export class InstanceService {
   }
 
   public async executeStash(instanceId: number, parentPort: string = '8000', onFinished?: () => void): Promise<void> {
+    const currentInst = this.loadedInstances.find((i) => i.id === instanceId);
+    const previousStatus = currentInst ? currentInst.status : 'ACTIVE';
+
+    // 1. Optimistic UI update
+    if (this.selectedInstanceId === instanceId) {
+      this.updateInstanceStatusToggleUI('STASHED');
+    }
+    if (currentInst) currentInst.status = 'STASHED';
+
     addLog(`[STASH] Congelando Instancia #${instanceId} y aplanando posición a 0...`, 'info');
     try {
       const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${instanceId}/stash`, {
@@ -237,19 +246,35 @@ export class InstanceService {
           'info'
         );
         await this.refreshInstanceModalDropdown(parentPort);
-        if (this.selectedInstanceId === instanceId) {
-          this.updateInstanceStatusToggleUI('STASHED');
-        }
         if (onFinished) onFinished();
       } else {
-        addLog(`[STASH ERROR] Fallo al congelar Instancia #${instanceId}: ${data.detail || JSON.stringify(data)}`, 'err');
+        // Rollback
+        if (currentInst) currentInst.status = previousStatus;
+        if (this.selectedInstanceId === instanceId) {
+          this.updateInstanceStatusToggleUI(previousStatus);
+        }
+        addLog(`[STASH ERROR] Fallo al congelar Instancia #${instanceId}: ${data.detail || JSON.stringify(data)}. Estado revertido.`, 'err');
       }
     } catch (err: any) {
-      addLog(`[STASH ERROR] Fallo de conexión: ${err.message}`, 'err');
+      // Rollback
+      if (currentInst) currentInst.status = previousStatus;
+      if (this.selectedInstanceId === instanceId) {
+        this.updateInstanceStatusToggleUI(previousStatus);
+      }
+      addLog(`[STASH ERROR] Fallo de conexión: ${err.message}. Estado revertido.`, 'err');
     }
   }
 
   public async executePop(instanceId: number, mode: 'NOW' | 'NO_FEES', parentPort: string = '8000', onFinished?: () => void): Promise<void> {
+    const currentInst = this.loadedInstances.find((i) => i.id === instanceId);
+    const previousStatus = currentInst ? currentInst.status : 'STASHED';
+
+    // 1. Optimistic UI update
+    if (this.selectedInstanceId === instanceId) {
+      this.updateInstanceStatusToggleUI('ACTIVE');
+    }
+    if (currentInst) currentInst.status = 'ACTIVE';
+
     addLog(`[POP] Reanudando Instancia #${instanceId} en modo ${mode}...`, 'info');
     try {
       const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${instanceId}/stash/pop`, {
@@ -264,15 +289,22 @@ export class InstanceService {
           'info'
         );
         await this.refreshInstanceModalDropdown(parentPort);
-        if (this.selectedInstanceId === instanceId) {
-          this.updateInstanceStatusToggleUI('ACTIVE');
-        }
         if (onFinished) onFinished();
       } else {
-        addLog(`[POP ERROR] Fallo al reanudar Instancia #${instanceId}: ${data.detail || JSON.stringify(data)}`, 'err');
+        // Rollback
+        if (currentInst) currentInst.status = previousStatus;
+        if (this.selectedInstanceId === instanceId) {
+          this.updateInstanceStatusToggleUI(previousStatus);
+        }
+        addLog(`[POP ERROR] Fallo al reanudar Instancia #${instanceId}: ${data.detail || JSON.stringify(data)}. Estado revertido.`, 'err');
       }
     } catch (err: any) {
-      addLog(`[POP ERROR] Fallo de conexión: ${err.message}`, 'err');
+      // Rollback
+      if (currentInst) currentInst.status = previousStatus;
+      if (this.selectedInstanceId === instanceId) {
+        this.updateInstanceStatusToggleUI(previousStatus);
+      }
+      addLog(`[POP ERROR] Fallo de conexión: ${err.message}. Estado revertido.`, 'err');
     }
   }
 
@@ -297,18 +329,12 @@ export class InstanceService {
           </div>
           <div class="pop-dropdown-menu" id="header-pop-menu" style="display: none;">
             <button class="pop-dropdown-item" id="btn-header-pop-opt-now">
-              <div class="pop-title">
-                <span>⚡ Pop NOW</span>
-                <span class="badge-tag-now">Taker Instant</span>
-              </div>
-              <div class="pop-desc">Entrada inmediata a mercado reconstruyendo grilla por % relativo.</div>
+              <div class="pop-title">⚡ Inmediato (Taker)</div>
+              <div class="pop-desc">Abre posición de entrada al precio de mercado actual.</div>
             </button>
             <button class="pop-dropdown-item" id="btn-header-pop-opt-nofees">
-              <div class="pop-title">
-                <span>🎯 Pop noFees</span>
-                <span class="badge-tag-nofees">Maker 0% Fee</span>
-              </div>
-              <div class="pop-desc">Entrada pasiva GTX al mejor bid/ask para ahorrar comisión Taker.</div>
+              <div class="pop-title">🎯 Sin Comisiones (Maker)</div>
+              <div class="pop-desc">Coloca orden límite en el precio de liquidación del snapshot.</div>
             </button>
           </div>
         </div>
@@ -320,17 +346,21 @@ export class InstanceService {
       const optNow = document.getElementById('btn-header-pop-opt-now');
       const optNoFees = document.getElementById('btn-header-pop-opt-nofees');
 
-      if (btnPopNow) {
-        btnPopNow.addEventListener('click', () => this.executePop(instanceId, 'NOW', parentPort, onMatrixRefresh));
-      }
-
       if (btnToggle && popMenu) {
         btnToggle.addEventListener('click', (e) => {
           e.stopPropagation();
           popMenu.style.display = popMenu.style.display === 'none' ? 'flex' : 'none';
         });
+
         document.addEventListener('click', () => {
           if (popMenu) popMenu.style.display = 'none';
+        });
+      }
+
+      if (btnPopNow) {
+        btnPopNow.addEventListener('click', () => {
+          if (popMenu) popMenu.style.display = 'none';
+          this.executePop(instanceId, 'NOW', parentPort, onMatrixRefresh);
         });
       }
 
@@ -371,6 +401,12 @@ export class InstanceService {
     }
 
     const newStatus = currentStatus === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
+    const headerSelector = document.getElementById('header-instance-selector') as HTMLSelectElement | null;
+
+    // 1. Optimistic visual transition
+    if (currentInst) currentInst.status = newStatus;
+    this.updateInstanceStatusToggleUI(newStatus);
+    if (headerSelector) headerSelector.style.color = getInstanceStatusColor(newStatus);
 
     try {
       addLog(`[INSTANCE STATUS] Solicitando cambio de estado para Instancia #${currentInstId}: ${currentStatus} -> ${newStatus}...`, 'info');
@@ -382,15 +418,19 @@ export class InstanceService {
 
       if (res.ok) {
         addLog(`[INSTANCE STATUS] Estado cambiado exitosamente a: ${newStatus}`, 'info');
-        if (currentInst) currentInst.status = newStatus;
-        this.updateInstanceStatusToggleUI(newStatus);
-        const headerSelector = document.getElementById('header-instance-selector') as HTMLSelectElement | null;
-        if (headerSelector) headerSelector.style.color = getInstanceStatusColor(newStatus);
       } else {
-        addLog(`[INSTANCE STATUS ERROR] Error en API al cambiar estado (HTTP ${res.status})`, 'err');
+        // Rollback on server error
+        if (currentInst) currentInst.status = currentStatus;
+        this.updateInstanceStatusToggleUI(currentStatus);
+        if (headerSelector) headerSelector.style.color = getInstanceStatusColor(currentStatus);
+        addLog(`[INSTANCE STATUS ERROR] Error en API al cambiar estado (HTTP ${res.status}). Revertido a ${currentStatus}`, 'err');
       }
     } catch (err: any) {
-      addLog(`[INSTANCE STATUS ERROR] Fallo de red: ${err.message}`, 'err');
+      // Rollback on network failure
+      if (currentInst) currentInst.status = currentStatus;
+      this.updateInstanceStatusToggleUI(currentStatus);
+      if (headerSelector) headerSelector.style.color = getInstanceStatusColor(currentStatus);
+      addLog(`[INSTANCE STATUS ERROR] Fallo de red: ${err.message}. Revertido a ${currentStatus}`, 'err');
     }
   }
 

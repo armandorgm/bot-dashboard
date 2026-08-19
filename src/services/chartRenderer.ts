@@ -26,6 +26,8 @@ export interface ChartContext {
 export class ChartRenderer {
   private activeMarkers: VisualMarker[] = [];
   private animationFrameId: number | null = null;
+  private rafId: number | null = null;
+  private needsRedraw: boolean = false;
   private xAdvanceMode: 'tick' | 'second' = 'second';
 
   constructor(private ctxState: ChartContext) {}
@@ -37,6 +39,21 @@ export class ChartRenderer {
   public getXAdvanceMode(): 'tick' | 'second' {
     return this.xAdvanceMode;
   }
+
+  public requestRender(): void {
+    this.needsRedraw = true;
+    if (this.rafId === null) {
+      this.rafId = requestAnimationFrame(this.renderLoop);
+    }
+  }
+
+  private renderLoop = (): void => {
+    this.rafId = null;
+    if (this.needsRedraw) {
+      this.needsRedraw = false;
+      this.draw();
+    }
+  };
 
   public draw(): void {
     const { canvasEl, chartDisplayConfig, chartViewportController, coinAnimationManager, orderProcessRegistry } = this.ctxState;
@@ -888,7 +905,7 @@ export class ChartRenderer {
     if (this.animationFrameId !== null) return;
     const loop = () => {
       if (this.xAdvanceMode === 'second') {
-        this.draw();
+        this.requestRender();
         this.animationFrameId = requestAnimationFrame(loop);
       } else {
         this.animationFrameId = null;
@@ -912,7 +929,7 @@ export class ChartRenderer {
     } else {
       this.stopSecondAnimationLoop();
       this.pruneHistory(history);
-      this.draw();
+      this.requestRender();
       addLog('[CHART] Eje X cambiado a modo TICK (avance por tick).', 'info');
     }
   }
@@ -924,7 +941,15 @@ export class ChartRenderer {
     if (rect.width > 0 && rect.height > 0) {
       canvasEl.width = rect.width;
       canvasEl.height = rect.height;
-      this.draw();
+      this.requestRender();
+    }
+  }
+
+  public destroy(): void {
+    this.stopSecondAnimationLoop();
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
     }
   }
 }
