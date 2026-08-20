@@ -177,11 +177,60 @@ fn start_private_stream(app_handle: AppHandle) {
     });
 }
 
+#[tauri::command]
+async fn open_addon_window(
+    app: AppHandle,
+    addon_id: String,
+    title: String,
+    route: String,
+    width: Option<f64>,
+    height: Option<f64>,
+) -> Result<(), String> {
+    use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+
+    // If window already exists, un-minimize, show and focus it
+    if let Some(window) = app.get_webview_window(&addon_id) {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        return Ok(());
+    }
+
+    let w = width.unwrap_or(520.0);
+    let h = height.unwrap_or(680.0);
+
+    let clean_route = route.trim_start_matches('/');
+    let url = WebviewUrl::App(clean_route.into());
+
+    let _win = WebviewWindowBuilder::new(&app, &addon_id, url)
+        .title(title)
+        .inner_size(w, h)
+        .resizable(true)
+        .build()
+        .map_err(|e| format!("Error creando ventana para addon '{}': {}", addon_id, e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn close_addon_window(app: AppHandle, addon_id: String) -> Result<(), String> {
+    use tauri::Manager;
+    if let Some(window) = app.get_webview_window(&addon_id) {
+        window.close().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_instance_config, start_private_stream])
+        .invoke_handler(tauri::generate_handler![
+            get_instance_config,
+            start_private_stream,
+            open_addon_window,
+            close_addon_window
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

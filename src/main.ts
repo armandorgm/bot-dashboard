@@ -904,4 +904,35 @@ window.addEventListener('DOMContentLoaded', async () => {
     strategyManifestService.syncStrategySelectorOptions();
     instanceService.refreshInstanceModalDropdown(config.parent_api_port, config.instance_id);
   });
+
+  // Initialize Addons Modal & UI Manager
+  import('./services/addonUiManager').then(({ addonUiManager }) => {
+    addonUiManager.setParentPort(config.parent_api_port);
+    const addonsModal = document.getElementById('addons-modal');
+    const openAddonsBtn = document.getElementById('btn-open-addons-modal');
+    const closeAddonsBtn = document.getElementById('btn-close-addons-modal');
+    const refreshAddonsBtn = document.getElementById('btn-refresh-addons-modal');
+
+    if (openAddonsBtn && addonsModal) {
+      openAddonsBtn.addEventListener('click', () => {
+        addonsModal.style.display = 'flex';
+        addonUiManager.fetchAddons();
+      });
+    }
+
+    if (closeAddonsBtn && addonsModal) {
+      closeAddonsBtn.addEventListener('click', () => {
+        addonsModal.style.display = 'none';
+      });
+    }
+
+    if (refreshAddonsBtn) {
+      refreshAddonsBtn.addEventListener('click', () => {
+        addonUiManager.fetchAddons();
+      });
+    }
+
+    // Initial silent load of addons status
+    addonUiManager.fetchAddons();
+  });
 });

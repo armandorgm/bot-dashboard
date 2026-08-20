@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sintonizador de Apalancamiento - Addon</title>
+    <style>
+      body {
+        padding: 16px;
+        background: #030712;
+        color: #f3f4f6;
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .addon-card {
+        background: #111827;
+        border: 1px solid #1f2937;
+        border-radius: 10px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .addon-title {
+        font-size: 14px;
+        font-weight: bold;
+        color: #10b981;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .input-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .input-group label {
+        font-size: 11px;
+        color: #9ca3af;
+      }
+      .input-group input, .input-group select {
+        background: #0b0f19;
+        border: 1px solid #374151;
+        color: #f9fafb;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 12px;
+      }
+      .btn-primary {
+        background: #10b981;
+        color: #000000;
+        font-weight: bold;
+        border: none;
+        border-radius: 6px;
+        padding: 8px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 12px;
+      }
+      .btn-primary:hover {
+        background: #059669;
+      }
+      .status-box {
+        background: #0b0f19;
+        border: 1px solid #1e293b;
+        border-radius: 6px;
+        padding: 10px;
+        font-size: 11px;
+        color: #cbd5e1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="addon-card">
+      <div class="addon-title">
+        <span>⚡</span> SINTONIZADOR DE APALANCAMIENTO
+      </div>
+      <p style="font-size: 11px; color: #94a3b8; margin: 0;">
+        Ajuste en caliente de apalancamiento y margen aislado para Binance Futures.
+      </p>
+
+      <div class="input-group">
+        <label>SÍMBOLO FUTURES:</label>
+        <input type="text" id="symbol-input" value="1000PEPEUSDC" />
+      </div>
+
+      <div class="input-group">
+        <label>NIVEL DE APALANCAMIENTO (1x - 50x):</label>
+        <input type="number" id="leverage-input" min="1" max="50" value="10" />
+      </div>
+
+      <button id="btn-apply-leverage" class="btn-primary">
+        APLICAR EN CALIENTE
+      </button>
+
+      <div id="status-display" class="status-box">
+        Listo. Addon activo en segundo plano.
+      </div>
+    </div>
+
+    <script>
+      const btn = document.getElementById('btn-apply-leverage');
+      const symbolInput = document.getElementById('symbol-input');
+      const levInput = document.getElementById('leverage-input');
+      const statusBox = document.getElementById('status-display');
+
+      btn.addEventListener('click', async () => {
+        const symbol = symbolInput.value.trim().toUpperCase();
+        const leverage = parseInt(levInput.value, 10);
+        statusBox.innerText = `Aplicando ${leverage}x a ${symbol}...`;
+        try {
+          const res = await fetch('http://127.0.0.1:8000/api/microapps/leverage_tuner/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol, leverage })
+          });
+          const data = await res.json();
+          if (res.ok) {
+            statusBox.style.color = '#10b981';
+            statusBox.innerText = `✅ Éxito: ${data.message || JSON.stringify(data)}`;
+          } else {
+            statusBox.style.color = '#ef4444';
+            statusBox.innerText = `❌ Error: ${data.detail || 'Fallo al ajustar'}`;
+          }
+        } catch (e) {
+          statusBox.style.color = '#ef4444';
+          statusBox.innerText = `❌ Error de conexión: ${e.message}`;
+        }
+      });
+    </script>
+  </body>
+</html>

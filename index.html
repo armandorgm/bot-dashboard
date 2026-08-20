@@ -55,6 +55,9 @@
           <div class="metric-group">
             <button id="btn-open-instance-config" style="background: #6366f1; color: #ffffff; border: none; border-radius: 4px; padding: 4px 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;" title="Configuración de Instancia en Caliente">⚙️ INSTANCIAS</button>
           </div>
+          <div class="metric-group">
+            <button id="btn-open-addons-modal" style="background: #0ea5e9; color: #ffffff; border: none; border-radius: 4px; padding: 4px 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;" title="Gestión de Addons y Extensiones">🧩 ADDONS</button>
+          </div>
         </div>
       </header>
 
@@ -802,6 +805,37 @@
           </button>
           <button id="btn-confirm-stash-modal" style="background: #f59e0b; color: #000000; border: none; border-radius: 6px; padding: 6px 16px; font-family: inherit; font-size: 11px; font-weight: bold; cursor: pointer; box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);">
             Confirmar Stash
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ADDONS MANAGEMENT MODAL -->
+    <div id="addons-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); z-index: 9999; justify-content: center; align-items: center; padding: 20px;">
+      <div style="background: #111827; border: 1px solid #374151; border-radius: 12px; width: 100%; max-width: 650px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); overflow: hidden; font-family: 'JetBrains Mono', monospace;">
+        <!-- Modal Header -->
+        <div style="padding: 16px 20px; border-bottom: 1px solid #1f2937; display: flex; justify-content: space-between; align-items: center; background: #1f2937;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 20px;">🧩</span>
+            <h2 style="margin: 0; font-size: 16px; font-weight: bold; color: #f3f4f6;">Control de Addons en Caliente</h2>
+          </div>
+          <button id="btn-close-addons-modal" style="background: transparent; border: none; color: #9ca3af; font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 4px;">✕</button>
+        </div>
+
+        <!-- Modal Content -->
+        <div style="padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 16px;">
+          <p style="font-size: 12px; color: #9ca3af; margin: 0;">
+            Activa o desactiva addons en caliente con persistencia. Los workers se mantienen activos en segundo plano aunque cierres su ventana dedicada.
+          </p>
+          <div id="addons-list-container" style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Rendered dynamically by addonUiManager.ts -->
+          </div>
+        </div>
+
+        <!-- Modal Footer -->
+        <div style="padding: 12px 20px; border-top: 1px solid #1f2937; display: flex; justify-content: flex-end; background: #161b22;">
+          <button id="btn-refresh-addons-modal" style="background: #374151; color: #d1d5db; border: 1px solid #4b5563; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: bold; cursor: pointer;">
+            🔄 Actualizar
           </button>
         </div>
       </div>
