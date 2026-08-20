@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reconciliation Healer - Addon</title>
+    <style>
+      body {
+        padding: 16px;
+        background: #030712;
+        color: #f3f4f6;
+        font-family: 'JetBrains Mono', monospace;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .card {
+        background: #111827;
+        border: 1px solid #1f2937;
+        border-radius: 10px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .title {
+        font-size: 14px;
+        font-weight: bold;
+        color: #3b82f6;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .btn {
+        background: #3b82f6;
+        color: #ffffff;
+        font-weight: bold;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 14px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 12px;
+        transition: background 0.15s ease;
+      }
+      .btn:hover {
+        background: #2563eb;
+      }
+      .status-box {
+        background: #0b0f19;
+        border: 1px solid #1e293b;
+        border-radius: 6px;
+        padding: 10px;
+        font-size: 11px;
+        color: #cbd5e1;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 250px;
+        overflow-y: auto;
+      }
+      .metric-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .metric-box {
+        background: #0b0f19;
+        border: 1px solid #1e293b;
+        border-radius: 6px;
+        padding: 8px 12px;
+      }
+      .metric-box span {
+        display: block;
+      }
+      .metric-lbl {
+        font-size: 10px;
+        color: #9ca3af;
+      }
+      .metric-val {
+        font-size: 16px;
+        font-weight: bold;
+        color: #10b981;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="card-header">
+        <div class="title">
+          <span>🩺</span> RECONCILIATION HEALER
+        </div>
+        <div class="badge" id="healer-status-badge" style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; padding: 2px 8px; border-radius: 12px; font-size: 10px; color: #10b981;">
+          🟢 LOOP ACTIVO (60s)
+        </div>
+      </div>
+      <p style="font-size: 11px; color: #94a3b8; margin: 0;">
+        Vigilancia continua de procesos huérfanos, órdenes atascadas y rescate garantizado Taker de salidas rechazadas por MIN_NOTIONAL.
+      </p>
+
+      <div class="metric-row">
+        <div class="metric-box">
+          <span class="metric-lbl">ESTADO GENERAL</span>
+          <span class="metric-val" id="val-healer-state">ACTIVO</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-lbl">FRECUENCIA DE ESCANEO</span>
+          <span class="metric-val" style="color: #60a5fa;">60 seg</span>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <button id="btn-run-healer" class="btn" style="flex: 1;">
+          ⚡ EJECUTAR ESCANEO Y SANACIÓN AHORA
+        </button>
+        <button id="btn-refresh-status" style="background: #1f2937; color: #d1d5db; border: 1px solid #374151; border-radius: 6px; padding: 8px 12px; cursor: pointer; font-size: 12px;">
+          🔄
+        </button>
+      </div>
+
+      <div style="font-size: 11px; font-weight: bold; color: #9ca3af; margin-top: 4px;">REGISTRO DE EJECUCIÓN & DIAGNÓSTICO:</div>
+      <div id="healer-log-box" class="status-box">Cargando estado del Healer...</div>
+    </div>
+
+    <script>
+      const btnRun = document.getElementById('btn-run-healer');
+      const btnRefresh = document.getElementById('btn-refresh-status');
+      const logBox = document.getElementById('healer-log-box');
+      const stateVal = document.getElementById('val-healer-state');
+      const badge = document.getElementById('healer-status-badge');
+
+      async function checkStatus() {
+        try {
+          const res = await fetch('http://127.0.0.1:8000/api/addons/reconciliation_healer/status');
+          if (res.ok) {
+            const data = await res.json();
+            const isRunning = data.is_running;
+            stateVal.innerText = isRunning ? 'ACTIVO' : 'DETENIDO';
+            stateVal.style.color = isRunning ? '#10b981' : '#ef4444';
+            badge.innerText = isRunning ? '🟢 LOOP ACTIVO (60s)' : '🔴 INACTIVO';
+            badge.style.borderColor = isRunning ? '#10b981' : '#ef4444';
+            badge.style.color = isRunning ? '#10b981' : '#ef4444';
+            logBox.innerText = `[${new Date().toLocaleTimeString()}] Addon en ejecución: ${isRunning}\nKeep-alive on close: ${data.keep_alive_on_close}`;
+          } else {
+            logBox.innerText = `Error consultando estado: HTTP ${res.status}`;
+          }
+        } catch (e) {
+          logBox.innerText = `Error de conexión: ${e.message}`;
+        }
+      }
+
+      btnRun.addEventListener('click', async () => {
+        logBox.innerText = `[${new Date().toLocaleTimeString()}] Disparando reconciliación manual...`;
+        try {
+          const res = await fetch('http://127.0.0.1:8000/api/addons/reconciliation_healer/action/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+          });
+          const data = await res.json();
+          logBox.innerText = `[${new Date().toLocaleTimeString()}] Resultado:\n${JSON.stringify(data, null, 2)}`;
+        } catch (e) {
+          logBox.innerText = `[${new Date().toLocaleTimeString()}] Error: ${e.message}`;
+        }
+      });
+
+      btnRefresh.addEventListener('click', checkStatus);
+      checkStatus();
+    </script>
+  </body>
+</html>
