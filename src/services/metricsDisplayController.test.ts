@@ -1,4 +1,5 @@
 import { MetricsDisplayController } from './metricsDisplayController';
+import { FRAME_BUDGET_MS } from '../utils/constants';
 
 export function runMetricsDisplayControllerVerification(): boolean {
   // Setup mock DOM elements
@@ -22,7 +23,7 @@ export function runMetricsDisplayControllerVerification(): boolean {
   mockSessionPnLEl.id = 'session-pnl-val';
   document.body.appendChild(mockSessionPnLEl);
 
-  const controller = new MetricsDisplayController(50);
+  const controller = new MetricsDisplayController(FRAME_BUDGET_MS);
 
   try {
     controller.cacheElements();

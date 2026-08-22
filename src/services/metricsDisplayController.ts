@@ -1,4 +1,5 @@
 import { formatNum } from '../utils/formatters';
+import { FRAME_BUDGET_MS } from '../utils/constants';
 
 export interface PnLMetricsState {
   realizedPnL: number;
@@ -74,7 +75,7 @@ export class MetricsDisplayController {
   private timerId: number | null = null;
   private intervalMs: number;
 
-  constructor(intervalMs: number = 100) {
+  constructor(intervalMs: number = FRAME_BUDGET_MS) {
     this.intervalMs = intervalMs;
   }
 
@@ -293,4 +294,4 @@ export class MetricsDisplayController {
   }
 }
 
-export const metricsDisplayController = new MetricsDisplayController(100);
+export const metricsDisplayController = new MetricsDisplayController(FRAME_BUDGET_MS);

@@ -504,6 +504,7 @@ body {
   border-radius: 8px;
   overflow: hidden;
   background: #050814;
+  contain: layout style paint;
 }
 
 #hft-chart {
@@ -556,6 +557,7 @@ body {
   border-radius: 8px;
   padding: 10px;
   border: 1px solid rgba(255, 255, 255, 0.03);
+  contain: layout style;
 }
 
 .log-row {

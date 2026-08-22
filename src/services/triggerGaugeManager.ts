@@ -1,15 +1,19 @@
 import { ConmutatorMode, PositionSide, ResolvedSide, StrategyTriggerStatus, TriggerState } from '../types';
 import { formatNum, getSymbolDecimals } from '../utils/formatters';
+import { FRAME_BUDGET_MS } from '../utils/constants';
 
 /**
  * Single Responsibility: Manage calculation, color mapping and rendering of the
  * Dynamic Polarity Conmutator and Trend Follower (v2.2.0 Visual Architecture).
- * Fully live and reactive to real-time market ticks.
+ * Fully live and reactive to real-time market ticks with Alpha 4 FPS throttling.
  */
 export class TriggerGaugeManager {
   private currentStatus: StrategyTriggerStatus | null = null;
   private instanceStatusMap: Map<number, StrategyTriggerStatus> = new Map();
   private contextGetter?: () => { symbol: string; instanceId: number; latestPrice: number };
+  private lastRenderTime: number = 0;
+  private rafId: number | null = null;
+  private needsRender: boolean = false;
 
   public setContextGetter(getter: () => { symbol: string; instanceId: number; latestPrice: number }): void {
     this.contextGetter = getter;
@@ -63,13 +67,35 @@ export class TriggerGaugeManager {
       this.instanceStatusMap.set(instanceId, sanitized);
       if (this.currentStatus?.instance_id === instanceId || !this.currentStatus) {
         this.currentStatus = sanitized;
-        this.render();
+        this.requestRender();
       }
     }
   }
 
+  public requestRender(): void {
+    this.needsRender = true;
+    if (this.rafId === null) {
+      this.rafId = requestAnimationFrame(this.renderLoop);
+    }
+  }
+
+  private renderLoop = (timestamp: DOMHighResTimeStamp): void => {
+    this.rafId = null;
+    if (!this.needsRender) return;
+
+    const elapsed = timestamp - this.lastRenderTime;
+    if (elapsed >= FRAME_BUDGET_MS) {
+      this.lastRenderTime = timestamp;
+      this.needsRender = false;
+      this.render();
+    } else {
+      this.rafId = requestAnimationFrame(this.renderLoop);
+    }
+  };
+
   /**
-   * Live tick update handler: called on every market ticker WebSocket event
+   * Live tick update handler: called on every market ticker WebSocket event.
+   * Throttled to Alpha target rate (max 4 FPS).
    */
   public onTick(bid: number, ask: number): void {
     const latestPrice = (bid + ask) / 2 || bid;
@@ -110,7 +136,7 @@ export class TriggerGaugeManager {
     this.currentStatus = s;
     this.instanceStatusMap.set(s.instance_id, s);
 
-    this.render();
+    this.requestRender();
   }
 
   public getSanitizedStatus(raw: Partial<StrategyTriggerStatus>): StrategyTriggerStatus {

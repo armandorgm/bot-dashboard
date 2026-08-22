@@ -1,5 +1,6 @@
 import { TickData, HftEvent, VisualMarker, ChasePipelineProcess, InstanceConfig, StrategyTriggerStatus } from '../types';
 import { formatNum, getSymbolDecimals } from '../utils/formatters';
+import { FRAME_BUDGET_MS } from '../utils/constants';
 import { ChartDisplayConfig } from './chartDisplayConfig';
 import { ChartViewportController } from './chartViewportController';
 import { CoinAnimationManager } from './coinAnimation';
@@ -28,6 +29,7 @@ export class ChartRenderer {
   private animationFrameId: number | null = null;
   private rafId: number | null = null;
   private needsRedraw: boolean = false;
+  private lastRenderTime: number = 0;
   private xAdvanceMode: 'tick' | 'second' = 'second';
 
   constructor(private ctxState: ChartContext) {}
@@ -47,11 +49,17 @@ export class ChartRenderer {
     }
   }
 
-  private renderLoop = (): void => {
+  private renderLoop = (timestamp: DOMHighResTimeStamp): void => {
     this.rafId = null;
-    if (this.needsRedraw) {
+    if (!this.needsRedraw) return;
+
+    const elapsed = timestamp - this.lastRenderTime;
+    if (elapsed >= FRAME_BUDGET_MS) {
+      this.lastRenderTime = timestamp;
       this.needsRedraw = false;
       this.draw();
+    } else {
+      this.rafId = requestAnimationFrame(this.renderLoop);
     }
   };
 
