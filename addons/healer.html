@@ -128,6 +128,8 @@
     </div>
 
     <script>
+      const urlParams = new URLSearchParams(window.location.search);
+      const parentPort = urlParams.get('parent_port') || window.__PARENT_API_PORT__ || '8000';
       const btnRun = document.getElementById('btn-run-healer');
       const btnRefresh = document.getElementById('btn-refresh-status');
       const logBox = document.getElementById('healer-log-box');
@@ -136,7 +138,7 @@
 
       async function checkStatus() {
         try {
-          const res = await fetch('http://127.0.0.1:8000/api/addons/reconciliation_healer/status');
+          const res = await fetch(`http://127.0.0.1:${parentPort}/api/addons/reconciliation_healer/status`);
           if (res.ok) {
             const data = await res.json();
             const isRunning = data.is_running;
@@ -157,7 +159,7 @@
       btnRun.addEventListener('click', async () => {
         logBox.innerText = `[${new Date().toLocaleTimeString()}] Disparando reconciliación manual...`;
         try {
-          const res = await fetch('http://127.0.0.1:8000/api/addons/reconciliation_healer/action/scan', {
+          const res = await fetch(`http://127.0.0.1:${parentPort}/api/addons/reconciliation_healer/action/scan`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({})

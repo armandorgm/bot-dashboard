@@ -606,7 +606,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   const btnSaveBaseAmount = document.getElementById('btn-save-base-amount') as HTMLButtonElement | null;
 
   if (baseAmountInput && btnSaveBaseAmount) {
-    fetch('http://127.0.0.1:8000/api/bot/config')
+    const parentPort = config?.parent_api_port || '8000';
+    fetch(`http://127.0.0.1:${parentPort}/api/bot/config`)
       .then((res) => res.json())
       .then((data) => {
         if (data && data.trade_amount) {
@@ -616,6 +617,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       .catch((err) => console.error('[BASE USD] Error fetching initial config:', err));
 
     btnSaveBaseAmount.addEventListener('click', async () => {
+      const currentParentPort = config?.parent_api_port || '8000';
       const val = parseFloat(baseAmountInput.value);
       if (isNaN(val) || val <= 0) {
         addLog('[BASE USD ERROR] Ingrese un valor mayor a 0', 'warn');
@@ -624,7 +626,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       try {
         btnSaveBaseAmount.disabled = true;
         btnSaveBaseAmount.textContent = '...';
-        const res = await fetch('http://127.0.0.1:8000/api/bot/config', {
+        const res = await fetch(`http://127.0.0.1:${currentParentPort}/api/bot/config`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ trade_amount: val }),

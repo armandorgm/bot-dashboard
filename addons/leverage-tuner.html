@@ -100,6 +100,8 @@
     </div>
 
     <script>
+      const urlParams = new URLSearchParams(window.location.search);
+      const parentPort = urlParams.get('parent_port') || window.__PARENT_API_PORT__ || '8000';
       const btn = document.getElementById('btn-apply-leverage');
       const symbolInput = document.getElementById('symbol-input');
       const levInput = document.getElementById('leverage-input');
@@ -110,7 +112,7 @@
         const leverage = parseInt(levInput.value, 10);
         statusBox.innerText = `Aplicando ${leverage}x a ${symbol}...`;
         try {
-          const res = await fetch('http://127.0.0.1:8000/api/microapps/leverage_tuner/run', {
+          const res = await fetch(`http://127.0.0.1:${parentPort}/api/microapps/leverage_tuner/run`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ symbol, leverage })
