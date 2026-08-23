@@ -2,6 +2,12 @@ import { defineConfig } from "vite";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
+// @ts-expect-error process is a nodejs global
+const isTestnet = process.env.TESTNET === "true" || process.env.VITE_TESTNET === "true";
+const defaultPort = isTestnet ? 1440 : 1430;
+// @ts-expect-error process is a nodejs global
+const port = Number(process.env.PORT || process.env.VITE_PORT || defaultPort);
+const hmrPort = port + 1;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
@@ -12,14 +18,14 @@ export default defineConfig(async () => ({
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
-    port: 1430,
+    port,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1431,
+          port: hmrPort,
         }
       : undefined,
     watch: {
