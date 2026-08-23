@@ -22,9 +22,11 @@ import { globalOverviewManager } from './services/globalOverviewManager';
 import { MarketFeedService } from './services/marketFeedService';
 import { triggerGaugeManager } from './services/triggerGaugeManager';
 import { metricsDisplayController } from './services/metricsDisplayController';
+import { networkSettingsManager } from './services/networkSettingsManager';
 import { runTriggerGaugeVerification } from './services/triggerGaugeManager.test';
 import { runOpenOrdersManagerVerification } from './services/openOrdersManager.test';
 import { runMetricsDisplayControllerVerification } from './services/metricsDisplayController.test';
+import { runNetworkSettingsManagerVerification } from './services/networkSettingsManager.test';
 
 // ── Service Instantiations ──────────────────────────────────────────────────
 const sessionMetrics = new SessionMetricsTracker();
@@ -34,11 +36,12 @@ const chartViewportController = new ChartViewportController(110);
 const orderProcessRegistry = new OrderProcessRegistry();
 
 // State Variables
+const initialPort = networkSettingsManager.getEffectivePort();
 let config: InstanceConfig = {
   instance_id: '--',
   symbol: '--',
-  port: '8000',
-  parent_api_port: '8000',
+  port: initialPort,
+  parent_api_port: initialPort,
 };
 
 let history: TickData[] = [];
@@ -55,7 +58,10 @@ const urlParams = new URLSearchParams(window.location.search);
 const qPort = urlParams.get('port');
 const qId = urlParams.get('instance_id');
 const qSym = urlParams.get('symbol');
-if (qPort) config.port = qPort;
+if (qPort) {
+  config.port = qPort;
+  config.parent_api_port = qPort;
+}
 if (qId) config.instance_id = qId;
 if (qSym) config.symbol = qSym;
 
@@ -895,6 +901,43 @@ window.addEventListener('DOMContentLoaded', async () => {
   instanceService.initModalListeners(config.parent_api_port, (id) => switchActiveInstance(id));
   globalOverviewManager.setViewMode('home', () => chartRenderer.handleResize(), config.parent_api_port);
 
+  // Network & API Settings Initialization
+  try {
+    runNetworkSettingsManagerVerification();
+  } catch (e) {
+    console.warn('[NETWORK TEST] Verification test error:', e);
+  }
+
+  networkSettingsManager.initModalListeners();
+  networkSettingsManager.onConfigChanged((newCfg) => {
+    config.port = newCfg.port;
+    config.parent_api_port = newCfg.port;
+
+    const portDisplayEl = document.getElementById('port-display');
+    if (portDisplayEl) portDisplayEl.innerText = config.port;
+
+    // Reconnect local bot WebSocket
+    marketFeed.connectLocalBotWebSocket();
+
+    // Re-sync open orders, pipelines, telemetry, instances, and addons on the new port
+    openOrdersManager.fetchOpenOrders(config.parent_api_port, config.symbol);
+    fetchActivePipelines();
+    const activeId = instanceService.getSelectedInstanceId() || config.instance_id;
+    instanceService.fetchInstanceTelemetry(activeId, config.parent_api_port);
+    instanceService.fetchInstanceTriggerStatus(activeId, config.parent_api_port);
+    strategyManifestService.fetchManifest(config.parent_api_port).then(() => {
+      strategyManifestService.syncStrategySelectorOptions();
+      instanceService.refreshInstanceModalDropdown(config.parent_api_port, config.instance_id);
+    });
+    if (globalOverviewManager.getViewMode() === 'home') {
+      globalOverviewManager.fetchGlobalOverview(config.parent_api_port, overviewCallbacks);
+    }
+    import('./services/addonUiManager').then(({ addonUiManager }) => {
+      addonUiManager.setParentPort(config.parent_api_port);
+      addonUiManager.fetchAddons();
+    });
+  });
+
   setInterval(() => {
     if (document.hidden) return;
     if (globalOverviewManager.getViewMode() === 'home') {
@@ -938,3 +981,4 @@ window.addEventListener('DOMContentLoaded', async () => {
     addonUiManager.fetchAddons();
   });
 });
+

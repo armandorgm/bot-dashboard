@@ -18,6 +18,11 @@
             <span class="led led-red" id="conn-led"></span>
             <span id="conn-text">DISCONNECTED</span>
           </div>
+          <div class="badge status-badge" id="header-network-badge" style="cursor: pointer; user-select: none; transition: all 0.2s ease;" title="Haga clic para configurar entorno de red y puerto API">
+            <span class="led led-green" id="header-network-led"></span>
+            <span id="header-network-text" style="font-weight: bold;">PROD :8000</span>
+          </div>
+
           <div class="badge status-badge" id="instance-status-toggle" style="cursor: pointer; user-select: none; transition: all 0.2s ease;" title="Haga clic para alternar el estado entre ACTIVE y PAUSED">
             <span class="led led-red" id="instance-status-led"></span>
             <span id="instance-status-text" style="font-weight: bold;">STOPPED</span>
@@ -51,6 +56,9 @@
             <span class="metric-label" style="color: #f59e0b;">CYCLE (s):</span>
             <input type="number" id="cycle-speed-input" min="0.5" max="300" step="0.5" value="10" style="width: 52px; background: #111827; color: #f59e0b; border: 1px solid #f59e0b; border-radius: 4px; padding: 2px 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px; outline: none; text-align: center;" title="Velocidad del run_cycle en segundos (0.5s - 300s)" />
             <button id="btn-set-cycle-speed" style="background: #f59e0b; color: #000; border: none; border-radius: 4px; padding: 2px 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: bold; cursor: pointer;" title="Aplicar velocidad de ciclo en caliente">SET</button>
+          </div>
+          <div class="metric-group">
+            <button id="btn-open-network-settings" style="background: #059669; color: #ffffff; border: none; border-radius: 4px; padding: 4px 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;" title="Ajustes de Red, APIs y Puertos">🌐 RED / API</button>
           </div>
           <div class="metric-group">
             <button id="btn-open-instance-config" style="background: #6366f1; color: #ffffff; border: none; border-radius: 4px; padding: 4px 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;" title="Configuración de Instancia en Caliente">⚙️ INSTANCIAS</button>
@@ -836,6 +844,86 @@
         <div style="padding: 12px 20px; border-top: 1px solid #1f2937; display: flex; justify-content: flex-end; background: #161b22;">
           <button id="btn-refresh-addons-modal" style="background: #374151; color: #d1d5db; border: 1px solid #4b5563; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: bold; cursor: pointer;">
             🔄 Actualizar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- NETWORK & API SETTINGS MODAL -->
+    <div id="network-settings-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); z-index: 9999; justify-content: center; align-items: center; padding: 20px;">
+      <div style="background: #111827; border: 1px solid #374151; border-radius: 12px; width: 100%; max-width: 540px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6); overflow: hidden; font-family: 'JetBrains Mono', monospace;">
+        <!-- Modal Header -->
+        <div style="padding: 16px 20px; border-bottom: 1px solid #1f2937; display: flex; justify-content: space-between; align-items: center; background: #1f2937;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 20px;">🌐</span>
+            <h2 style="margin: 0; font-size: 16px; font-weight: bold; color: #f3f4f6;">Ajustes de Conexión de Red y APIs</h2>
+          </div>
+          <button id="btn-close-network-modal" style="background: transparent; border: none; color: #9ca3af; font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 4px;">✕</button>
+        </div>
+
+        <!-- Modal Content -->
+        <div style="padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 16px;">
+          <p style="font-size: 12px; color: #9ca3af; margin: 0; line-height: 1.4;">
+            Selecciona el entorno de ejecución o personaliza el host y puerto del backend FastAPI. La aplicación reconectará en caliente los WebSockets y APIs sin recargar.
+          </p>
+
+          <!-- Quick Presets -->
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 11px; color: #9ca3af; font-weight: bold;">PRESETS RÁPIDOS:</span>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <button id="btn-preset-mainnet" type="button" style="background: rgba(16, 185, 129, 0.12); border: 1px solid #10b981; border-radius: 6px; padding: 10px; color: #10b981; font-family: inherit; font-size: 12px; font-weight: bold; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: all 0.2s;">
+                <span>🟢 PRODUCCIÓN</span>
+                <span style="font-size: 10px; color: #6ee7b7; font-weight: normal;">Puerto: 8000 (Mainnet)</span>
+              </button>
+              <button id="btn-preset-testnet" type="button" style="background: rgba(245, 158, 11, 0.12); border: 1px solid #f59e0b; border-radius: 6px; padding: 10px; color: #f59e0b; font-family: inherit; font-size: 12px; font-weight: bold; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: all 0.2s;">
+                <span>🧪 TESTNET</span>
+                <span style="font-size: 10px; color: #fde68a; font-weight: normal;">Puerto: 8002 (Testnet)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Network Form Fields -->
+          <div style="display: flex; flex-direction: column; gap: 12px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label for="net-select-mode" style="font-size: 11px; color: #9ca3af; font-weight: bold;">MODO DE RED:</label>
+              <select id="net-select-mode" style="background: #0d1117; color: #f3f4f6; border: 1px solid #374151; border-radius: 6px; padding: 8px 10px; font-family: inherit; font-size: 12px; outline: none;">
+                <option value="MAINNET">🟢 Producción (Mainnet :8000)</option>
+                <option value="TESTNET">🧪 Testnet (Futures Testnet :8002)</option>
+                <option value="CUSTOM">⚙️ Personalizado (Host / Puerto a medida)</option>
+              </select>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px;">
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <label for="net-input-host" style="font-size: 11px; color: #9ca3af; font-weight: bold;">HOST API:</label>
+                <input id="net-input-host" type="text" value="127.0.0.1" style="background: #0d1117; color: #f3f4f6; border: 1px solid #374151; border-radius: 6px; padding: 8px 10px; font-family: inherit; font-size: 12px; outline: none;" placeholder="127.0.0.1" />
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <label for="net-input-port" style="font-size: 11px; color: #9ca3af; font-weight: bold;">PUERTO:</label>
+                <input id="net-input-port" type="number" value="8000" min="1024" max="65535" style="background: #0d1117; color: #f3f4f6; border: 1px solid #374151; border-radius: 6px; padding: 8px 10px; font-family: inherit; font-size: 12px; outline: none;" placeholder="8000" />
+              </div>
+            </div>
+
+            <!-- Test Connection Button & Result -->
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
+              <button id="btn-test-network-conn" type="button" style="background: #374151; color: #60a5fa; border: 1px solid #3b82f6; border-radius: 6px; padding: 8px; font-family: inherit; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                <span>📡</span> Probar Conexión (Ping / Health)
+              </button>
+
+              <div id="net-test-result" style="display: none; padding: 10px; border-radius: 6px; font-size: 11px;">
+                <!-- Rendered dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal Footer -->
+        <div style="padding: 14px 20px; border-top: 1px solid #1f2937; display: flex; justify-content: flex-end; gap: 10px; background: #161b22;">
+          <button id="btn-cancel-network-modal" style="background: #1f2937; color: #d1d5db; border: 1px solid #374151; border-radius: 6px; padding: 8px 16px; font-family: inherit; font-size: 12px; font-weight: bold; cursor: pointer;">
+            Cancelar
+          </button>
+          <button id="btn-save-network-modal" style="background: #059669; color: #ffffff; border: none; border-radius: 6px; padding: 8px 20px; font-family: inherit; font-size: 12px; font-weight: bold; cursor: pointer; box-shadow: 0 0 12px rgba(5, 150, 105, 0.4);">
+            💾 Guardar y Reconectar
           </button>
         </div>
       </div>
