@@ -826,6 +826,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     config = await invoke<InstanceConfig>('get_instance_config');
 
+    if (config.parent_api_port) {
+      networkSettingsManager.setConfig({
+        port: config.parent_api_port,
+        mode: config.parent_api_port === '8002' ? 'TESTNET' : config.parent_api_port === '8000' ? 'MAINNET' : 'CUSTOM',
+      });
+    }
+
     const botTitleEl = document.getElementById('bot-title');
     const symbolDisplayEl = document.getElementById('symbol-display');
     const instanceIdDisplayEl = document.getElementById('instance-id-display');
