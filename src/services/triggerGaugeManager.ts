@@ -699,7 +699,7 @@ export class TriggerGaugeManager {
 
       const pinsContainerEl = document.getElementById('tg-pins-container');
       if (pinsContainerEl) {
-        pinsContainerEl.innerHTML = this.generatePinsHtml(clusters, decimals);
+        this.syncPinsDom(pinsContainerEl, clusters, decimals);
       }
 
       const detailEl = document.getElementById('tg-status-detail');
@@ -790,9 +790,7 @@ export class TriggerGaugeManager {
             </div>
 
             <!-- Dynamic Tactical Pins & Clusters Container -->
-            <div id="tg-pins-container" style="position: absolute; inset: 0; pointer-events: auto;">
-              ${this.generatePinsHtml(clusters, decimals)}
-            </div>
+            <div id="tg-pins-container" style="position: absolute; inset: 0; pointer-events: auto;"></div>
           </div>
         </div>
 
@@ -803,48 +801,109 @@ export class TriggerGaugeManager {
         </div>
       </div>
     `;
+
+    const pinsContainerEl = document.getElementById('tg-pins-container');
+    if (pinsContainerEl) {
+      this.syncPinsDom(pinsContainerEl, clusters, decimals);
+    }
   }
 
   /**
-   * Helper to generate HTML for clusters and micro-pins
+   * High-performance in-place DOM synchronization (Anti-Flickering):
+   * Reconciles tactical pins by unique key without destroying DOM nodes during hover.
    */
-  private generatePinsHtml(clusters: TacticalCluster[], decimals: number): string {
-    return clusters
-      .map((c) => {
-        if (c.pois.length === 1) {
-          const p = c.pois[0];
-          const pinStyle = this.getPinVisuals(p);
-          const tooltipContent = `${p.label} | ${p.subLabel || ''} | $${formatNum(p.price, decimals)}`;
-          return `
-            <div class="tactical-micro-pin" style="position: absolute; left: ${c.x}%; top: 50%; transform: translate(-50%, -50%); z-index: 4; cursor: pointer;" title="${tooltipContent}">
-              <div style="display: flex; flex-direction: column; align-items: center;">
-                <div style="background: ${pinStyle.bg}; border: 1px solid ${pinStyle.border}; color: ${pinStyle.color}; font-size: 0.60rem; font-weight: 800; padding: 1px 4px; border-radius: 3px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.6); margin-bottom: 2px;">
-                  ${pinStyle.icon} ${p.label}
-                </div>
-                <div style="width: 8px; height: 8px; border-radius: 50%; background: ${pinStyle.color}; border: 2px solid #ffffff; box-shadow: 0 0 8px ${pinStyle.color};"></div>
-              </div>
-            </div>
-          `;
-        } else {
-          // Clustered badge (+N)
-          const primaryPoi = c.pois.find((p) => p.isPrimary) || c.pois[0];
-          const pinStyle = this.getPinVisuals(primaryPoi);
-          const clusterTooltip = c.pois
-            .map((p) => `• ${p.label}: $${formatNum(p.price, decimals)} (${p.subLabel || ''})`)
-            .join('\n');
-          return `
-            <div class="tactical-cluster-pin" style="position: absolute; left: ${c.x}%; top: 50%; transform: translate(-50%, -50%); z-index: 4; cursor: pointer;" title="${clusterTooltip}">
-              <div style="display: flex; flex-direction: column; align-items: center;">
-                <div style="background: rgba(15,23,42,0.95); border: 1px solid ${pinStyle.border}; color: ${pinStyle.color}; font-size: 0.60rem; font-weight: 800; padding: 1px 5px; border-radius: 4px; white-space: nowrap; box-shadow: 0 0 10px ${pinStyle.bg};">
-                  📦 +${c.pois.length} POIs
-                </div>
-                <div style="width: 10px; height: 10px; border-radius: 50%; background: ${pinStyle.color}; border: 2px solid #ffffff; box-shadow: 0 0 10px ${pinStyle.color};"></div>
-              </div>
-            </div>
-          `;
+  public syncPinsDom(container: HTMLElement, clusters: TacticalCluster[], decimals: number): void {
+    const existingElements = new Map<string, HTMLElement>();
+
+    container.querySelectorAll<HTMLElement>('[data-cluster-key]').forEach((el) => {
+      const key = el.getAttribute('data-cluster-key');
+      if (key) existingElements.set(key, el);
+    });
+
+    const activeKeys = new Set<string>();
+
+    clusters.forEach((c) => {
+      const clusterKey = c.pois.map((p) => p.id).sort().join('|');
+      activeKeys.add(clusterKey);
+
+      const existingEl = existingElements.get(clusterKey);
+      const tooltipText = this.getClusterTooltipText(c, decimals);
+
+      if (existingEl) {
+        // Mutate existing node in-place: preserves browser :hover and native tooltips
+        existingEl.style.left = `${c.x}%`;
+        if (existingEl.title !== tooltipText) {
+          existingEl.title = tooltipText;
         }
-      })
-      .join('');
+      } else {
+        // Create new node only when first introduced
+        const newEl = this.createPinDomElement(c, clusterKey, tooltipText);
+        container.appendChild(newEl);
+      }
+    });
+
+    // Remove nodes that are no longer part of active clusters
+    existingElements.forEach((el, key) => {
+      if (!activeKeys.has(key)) {
+        el.remove();
+      }
+    });
+  }
+
+  /**
+   * Helper to create a single DOM pin element
+   */
+  private createPinDomElement(c: TacticalCluster, clusterKey: string, tooltipText: string): HTMLElement {
+    const el = document.createElement('div');
+    el.setAttribute('data-cluster-key', clusterKey);
+    el.title = tooltipText;
+    el.style.position = 'absolute';
+    el.style.left = `${c.x}%`;
+    el.style.top = '50%';
+    el.style.transform = 'translate(-50%, -50%)';
+    el.style.zIndex = '4';
+    el.style.cursor = 'pointer';
+
+    if (c.pois.length === 1) {
+      const p = c.pois[0];
+      const pinStyle = this.getPinVisuals(p);
+      el.className = 'tactical-micro-pin';
+      el.innerHTML = `
+        <div style="display: flex; flex-direction: column; align-items: center; pointer-events: none;">
+          <div style="background: ${pinStyle.bg}; border: 1px solid ${pinStyle.border}; color: ${pinStyle.color}; font-size: 0.60rem; font-weight: 800; padding: 1px 4px; border-radius: 3px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.6); margin-bottom: 2px;">
+            ${pinStyle.icon} ${p.label}
+          </div>
+          <div style="width: 8px; height: 8px; border-radius: 50%; background: ${pinStyle.color}; border: 2px solid #ffffff; box-shadow: 0 0 8px ${pinStyle.color};"></div>
+        </div>
+      `;
+    } else {
+      const primaryPoi = c.pois.find((p) => p.isPrimary) || c.pois[0];
+      const pinStyle = this.getPinVisuals(primaryPoi);
+      el.className = 'tactical-cluster-pin';
+      el.innerHTML = `
+        <div style="display: flex; flex-direction: column; align-items: center; pointer-events: none;">
+          <div style="background: rgba(15,23,42,0.95); border: 1px solid ${pinStyle.border}; color: ${pinStyle.color}; font-size: 0.60rem; font-weight: 800; padding: 1px 5px; border-radius: 4px; white-space: nowrap; box-shadow: 0 0 10px ${pinStyle.bg};">
+            📦 +${c.pois.length} POIs
+          </div>
+          <div style="width: 10px; height: 10px; border-radius: 50%; background: ${pinStyle.color}; border: 2px solid #ffffff; box-shadow: 0 0 10px ${pinStyle.color};"></div>
+        </div>
+      `;
+    }
+
+    return el;
+  }
+
+  /**
+   * Helper to format tooltip text for a cluster
+   */
+  private getClusterTooltipText(c: TacticalCluster, decimals: number): string {
+    if (c.pois.length === 1) {
+      const p = c.pois[0];
+      return `${p.label} | ${p.subLabel || ''} | $${formatNum(p.price, decimals)}`;
+    }
+    return c.pois
+      .map((p) => `• ${p.label}: $${formatNum(p.price, decimals)} (${p.subLabel || ''})`)
+      .join('\n');
   }
 
   /**

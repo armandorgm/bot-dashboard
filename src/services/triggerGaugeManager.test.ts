@@ -217,5 +217,27 @@ export function runTriggerGaugeVerification(): boolean {
     throw new Error(`Failed clustering POI grouping check: got ${JSON.stringify(clusters)}`);
   }
 
+  // 15. GAMA SPEC: In-place DOM Synchronization (Anti-Flickering Verification)
+  if (typeof document !== 'undefined') {
+    const mockContainer = document.createElement('div');
+    manager.syncPinsDom(mockContainer, clusters, 6);
+    const initialElements = Array.from(mockContainer.children);
+    if (initialElements.length !== 2) {
+      throw new Error(`Expected 2 elements in syncPinsDom, got ${initialElements.length}`);
+    }
+    const firstEl = initialElements[0];
+
+    // Re-sync with updated positions: element reference MUST be preserved (in-place mutation)
+    const movedClusters = [
+      { ...clusters[0], x: clusters[0].x + 1 },
+      { ...clusters[1], x: clusters[1].x - 1 },
+    ];
+    manager.syncPinsDom(mockContainer, movedClusters, 6);
+    const updatedElements = Array.from(mockContainer.children);
+    if (updatedElements[0] !== firstEl) {
+      throw new Error('syncPinsDom failed to preserve existing DOM node reference in-place (flickering hazard)');
+    }
+  }
+
   return true;
 }

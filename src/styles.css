@@ -1586,8 +1586,15 @@ body {
 
 .tactical-micro-pin,
 .tactical-cluster-pin {
-  transition: left 0.25s ease-out;
+  pointer-events: auto;
+  will-change: left;
+  transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
+}
+
+.tactical-micro-pin > *,
+.tactical-cluster-pin > * {
+  pointer-events: none;
 }
 
 .tactical-micro-pin:hover,
