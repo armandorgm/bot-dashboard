@@ -93,7 +93,7 @@ const chartRenderer = new ChartRenderer({
   getHz: () => marketFeed.getHz(),
 });
 
-// Wire Trigger Gauge Context Getter
+// Wire Trigger Gauge Context Getter & Tactical POI Sources
 triggerGaugeManager.setContextGetter(() => {
   const currentSelected = instanceService.getSelectedInstanceId();
   const targetInstId = currentSelected !== null ? currentSelected : parseInt(config.instance_id || '1', 10);
@@ -103,6 +103,11 @@ triggerGaugeManager.setContextGetter(() => {
     instanceId: targetInstId,
     latestPrice: latestPrice,
   };
+});
+
+triggerGaugeManager.setPoiSources({
+  getOpenOrders: () => openOrdersManager.getOrders(),
+  getActiveProcesses: () => activeChaseProcesses,
 });
 
 // Market Feed Service Coordinator

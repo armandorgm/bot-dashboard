@@ -74,6 +74,29 @@ export type ConmutatorMode = 'TREND_BUY' | 'TREND_SELL' | 'FLIP_SELL' | 'FLIP_BU
 export type ResolvedSide = 'BUY' | 'SELL';
 export type PositionSide = 'LONG' | 'SHORT' | 'FLAT';
 
+export type POICategory =
+  | 'REAL_ORDER'
+  | 'VIRTUAL_ORDER'
+  | 'EXECUTED_PENDING'
+  | 'FLIP_TRIGGER'
+  | 'NEW_PROCESS'
+  | 'ENTRY_REF';
+
+export interface TacticalPOI {
+  id: string;
+  price: number;
+  category: POICategory;
+  side: 'BUY' | 'SELL' | 'NEUTRAL';
+  label: string;
+  subLabel?: string;
+  isPrimary?: boolean;
+}
+
+export interface TacticalCluster {
+  x: number;
+  pois: TacticalPOI[];
+}
+
 export interface StrategyTriggerStatus {
   instance_id: number;
   symbol: string;

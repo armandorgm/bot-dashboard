@@ -1546,100 +1546,54 @@ body {
   font-weight: 700;
 }
 
-.trigger-bar-track {
+.trigger-spectrum-track {
   position: relative;
-  height: 22px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  height: 32px;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.08) 0%, rgba(15, 23, 42, 0.8) 50%, rgba(239, 68, 68, 0.08) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   overflow: visible;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
-.trigger-zero-line {
+.trigger-center-axis {
   position: absolute;
+  left: 50%;
   top: 0;
   bottom: 0;
   width: 2px;
-  background: rgba(255, 255, 255, 0.35);
-  z-index: 2;
+  background: #ffffff;
+  box-shadow: 0 0 10px #ffffff;
+  z-index: 5;
 }
 
-.trigger-target-line {
-  position: absolute;
-  top: -4px;
-  bottom: -4px;
-  width: 2px;
-  background: #f59e0b;
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.8);
-  z-index: 3;
-}
-
-.trigger-target-pin {
+.trigger-center-pill {
   position: absolute;
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  margin-bottom: 2px;
-  font-size: 0.62rem;
-  font-weight: 800;
-  color: #f59e0b;
-  white-space: nowrap;
-  background: rgba(15, 23, 42, 0.95);
-  border: 1px solid rgba(245, 158, 11, 0.5);
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
-.trigger-progress-fill {
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  border-radius: 4px;
-  opacity: 0.65;
-  transition: all 0.3s ease;
-  z-index: 1;
-}
-
-.trigger-current-marker {
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid #ffffff;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.8), 0 0 12px currentColor;
-  z-index: 4;
-  transition: left 0.3s ease;
-}
-
-.trigger-marker-dot {
-  display: block;
-  width: 4px;
-  height: 4px;
-  background: #ffffff;
-  border-radius: 50%;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
-
-.trigger-marker-label {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-top: 4px;
+  margin-bottom: 3px;
   font-size: 0.65rem;
   font-weight: 800;
-  color: #ffffff;
-  background: rgba(15, 23, 42, 0.95);
-  border: 1px solid currentColor;
-  padding: 1px 5px;
+  color: #000000;
+  background: #ffffff;
+  padding: 1px 6px;
   border-radius: 4px;
   white-space: nowrap;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.8);
+  z-index: 6;
+}
+
+.tactical-micro-pin,
+.tactical-cluster-pin {
+  transition: left 0.25s ease-out;
+  user-select: none;
+}
+
+.tactical-micro-pin:hover,
+.tactical-cluster-pin:hover {
+  transform: translate(-50%, -50%) scale(1.15) !important;
+  z-index: 10 !important;
 }
 
 .trigger-gauge-footer {

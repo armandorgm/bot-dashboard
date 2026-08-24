@@ -1,22 +1,47 @@
-import { ConmutatorMode, PositionSide, ResolvedSide, StrategyTriggerStatus, TriggerState } from '../types';
-import { formatNum, getSymbolDecimals } from '../utils/formatters';
+import {
+  ChasePipelineProcess,
+  ConmutatorMode,
+  OpenOrder,
+  PositionSide,
+  ResolvedSide,
+  StrategyTriggerStatus,
+  TacticalCluster,
+  TacticalPOI,
+  TriggerState,
+} from '../types';
+import { formatNum, getSymbolDecimals, normalizeSymbol } from '../utils/formatters';
 import { FRAME_BUDGET_MS } from '../utils/constants';
 
+export interface PoiSources {
+  getOpenOrders?: () => OpenOrder[];
+  getActiveProcesses?: () => ChasePipelineProcess[];
+}
+
 /**
- * Single Responsibility: Manage calculation, color mapping and rendering of the
- * Dynamic Polarity Conmutator and Trend Follower (v2.2.0 Visual Architecture).
- * Fully live and reactive to real-time market ticks with Alpha 4 FPS throttling.
+ * Single Responsibility: Manage calculation, logarithmic viewport projection,
+ * and rendering of the Tactical Price Spectrum & Polarity Conmutator Bar (Propuesta Gama).
+ * 
+ * - Center is ALWAYS fixed at 50% (Current Market Price).
+ * - Left side [P_min, P_market] and Right side [P_market, P_max] scale logarithmically.
+ * - Dynamic POI aggregation (Open Orders, Chasing/TP Processes, Flip Trigger, Entry Ref).
+ * - Anti-cluttering & clustering for micro-pins with distance < 3.5%.
+ * - Live reactive updates on WebSocket ticker ticks with Alpha 4 FPS throttling.
  */
 export class TriggerGaugeManager {
   private currentStatus: StrategyTriggerStatus | null = null;
   private instanceStatusMap: Map<number, StrategyTriggerStatus> = new Map();
   private contextGetter?: () => { symbol: string; instanceId: number; latestPrice: number };
+  private poiSources?: PoiSources;
   private lastRenderTime: number = 0;
   private rafId: number | null = null;
   private needsRender: boolean = false;
 
   public setContextGetter(getter: () => { symbol: string; instanceId: number; latestPrice: number }): void {
     this.contextGetter = getter;
+  }
+
+  public setPoiSources(sources: PoiSources): void {
+    this.poiSources = sources;
   }
 
   public getStatus(): StrategyTriggerStatus | null {
@@ -95,7 +120,7 @@ export class TriggerGaugeManager {
 
   /**
    * Live tick update handler: called on every market ticker WebSocket event.
-   * Throttled to Alpha target rate (max 4 FPS).
+   * Recalculates adverse pullback, delta remaining, and dynamic mode.
    */
   public onTick(bid: number, ask: number): void {
     const latestPrice = (bid + ask) / 2 || bid;
@@ -355,8 +380,220 @@ export class TriggerGaugeManager {
     }
   }
 
+  // ══════════════════════════════════════════════════════════════════════════════
+  // GAMA SPECIFICATION: POI AGGREGATION & VIEWPORT LOGARITHMIC PROJECTION
+  // ══════════════════════════════════════════════════════════════════════════════
+
   /**
-   * Render the visual gauge and conmutator panel inside the target DOM container
+   * Collect all Tactical Points of Interest from available sources and current status.
+   */
+  public getTacticalPois(s: StrategyTriggerStatus): TacticalPOI[] {
+    const pois: TacticalPOI[] = [];
+    const decimals = getSymbolDecimals(s.symbol);
+    const normSymbol = normalizeSymbol(s.symbol);
+
+    // 1. Flip Reversal Trigger
+    if (s.trigger_price && s.trigger_price > 0) {
+      const flipSide: 'BUY' | 'SELL' = s.position_side === 'LONG' ? 'SELL' : 'BUY';
+      pois.push({
+        id: 'poi-flip-trigger',
+        price: s.trigger_price,
+        category: 'FLIP_TRIGGER',
+        side: flipSide,
+        label: `⚡ Flip Target`,
+        subLabel: `$${formatNum(s.trigger_price, decimals)} (${s.required_metric_pc.toFixed(2)}%)`,
+        isPrimary: true,
+      });
+    }
+
+    // 2. Entry Reference Price
+    if (s.entry_price > 0 && s.position_side !== 'FLAT') {
+      pois.push({
+        id: 'poi-entry-ref',
+        price: s.entry_price,
+        category: 'ENTRY_REF',
+        side: 'NEUTRAL',
+        label: `Entry Ref`,
+        subLabel: `$${formatNum(s.entry_price, decimals)}`,
+      });
+    }
+
+    // 3. Real Open Orders from Exchange
+    if (this.poiSources?.getOpenOrders) {
+      const orders = this.poiSources.getOpenOrders();
+      if (Array.isArray(orders)) {
+        orders
+          .filter((o) => normalizeSymbol(o.symbol) === normSymbol && o.price > 0)
+          .forEach((o) => {
+            const side: 'BUY' | 'SELL' = o.side.toUpperCase() === 'BUY' ? 'BUY' : 'SELL';
+            pois.push({
+              id: `poi-order-${o.id}`,
+              price: o.price,
+              category: 'REAL_ORDER',
+              side: side,
+              label: `Limit ${side}`,
+              subLabel: `${o.amount} @ $${formatNum(o.price, decimals)}`,
+            });
+          });
+      }
+    }
+
+    // 4. Active Pipeline Processes (Chasing & Pending TPs)
+    if (this.poiSources?.getActiveProcesses) {
+      const procs = this.poiSources.getActiveProcesses();
+      if (Array.isArray(procs)) {
+        procs
+          .filter(
+            (p) =>
+              normalizeSymbol(p.symbol) === normSymbol &&
+              p.status !== 'COMPLETED' &&
+              p.status !== 'ABORTED'
+          )
+          .forEach((p) => {
+            const targetPrice = p.last_order_price || p.last_tick_price || p.initial_price || 0;
+            if (targetPrice > 0) {
+              const side: 'BUY' | 'SELL' = p.side.toUpperCase() === 'BUY' ? 'BUY' : 'SELL';
+              const isTp = p.status === 'WAITING_TP_FILL' || p.status === 'PLACING_TP';
+              pois.push({
+                id: `poi-proc-${p.id}`,
+                price: targetPrice,
+                category: isTp ? 'EXECUTED_PENDING' : 'VIRTUAL_ORDER',
+                side: side,
+                label: isTp ? `TP Pending` : `Chase Order`,
+                subLabel: `#${p.id} · ${p.status} @ $${formatNum(targetPrice, decimals)}`,
+              });
+            }
+          });
+      }
+    }
+
+    return pois;
+  }
+
+  /**
+   * Pure Viewport Geometry: Calculate min and max bounds for the atemporal X-axis.
+   * Ensures safe non-zero bounds centered around marketPrice.
+   */
+  public calculateViewportExtrema(
+    marketPrice: number,
+    pois: TacticalPOI[],
+    minSafetyMarginPc: number = 0.0075 // Default 0.75% margin if no points exist
+  ): { pMin: number; pMax: number } {
+    if (marketPrice <= 0) {
+      return { pMin: 0.99, pMax: 1.01 };
+    }
+
+    let minPrice = marketPrice * (1 - minSafetyMarginPc);
+    let maxPrice = marketPrice * (1 + minSafetyMarginPc);
+
+    for (const p of pois) {
+      if (p.price > 0) {
+        if (p.price < minPrice) minPrice = p.price;
+        if (p.price > maxPrice) maxPrice = p.price;
+      }
+    }
+
+    // Add extra 8% padding beyond the outermost points for visual clarity
+    const leftSpan = marketPrice - minPrice;
+    const rightSpan = maxPrice - marketPrice;
+
+    const pMin = Math.max(0.00000001, marketPrice - leftSpan * 1.08);
+    const pMax = marketPrice + rightSpan * 1.08;
+
+    return { pMin, pMax };
+  }
+
+  /**
+   * Logarithmic Bipartite Projection (Propuesta Gama):
+   * - x(P_min) = 0%
+   * - x(P_market) = 50% (Always exact center)
+   * - x(P_max) = 100%
+   */
+  public calculateLogCoordinate(
+    price: number,
+    marketPrice: number,
+    pMin: number,
+    pMax: number
+  ): number {
+    if (price <= pMin) return 0;
+    if (price >= pMax) return 100;
+    if (price === marketPrice) return 50;
+
+    if (price < marketPrice) {
+      const denom = Math.log(marketPrice) - Math.log(pMin);
+      if (denom <= 0) return 25;
+      const num = Math.log(marketPrice) - Math.log(price);
+      const ratio = 1 - num / denom;
+      return Math.max(0, Math.min(50, 50 * ratio));
+    } else {
+      const denom = Math.log(pMax) - Math.log(marketPrice);
+      if (denom <= 0) return 75;
+      const num = Math.log(price) - Math.log(marketPrice);
+      const ratio = num / denom;
+      return Math.max(50, Math.min(100, 50 + 50 * ratio));
+    }
+  }
+
+  /**
+   * Anti-Cluttering / Clustering Engine:
+   * Groups POIs that are closer than thresholdPercent (default 3.5%) in viewport coordinates.
+   */
+  public clusterPois(
+    pois: TacticalPOI[],
+    marketPrice: number,
+    pMin: number,
+    pMax: number,
+    thresholdPercent: number = 3.5
+  ): TacticalCluster[] {
+    if (pois.length === 0) return [];
+
+    // Map each POI to its calculated X position
+    const projected = pois.map((poi) => ({
+      poi,
+      x: this.calculateLogCoordinate(poi.price, marketPrice, pMin, pMax),
+    }));
+
+    // Sort by coordinate X ascending
+    projected.sort((a, b) => a.x - b.x);
+
+    const clusters: TacticalCluster[] = [];
+    let currentCluster: { xSum: number; pois: TacticalPOI[]; count: number } | null = null;
+
+    for (const item of projected) {
+      if (!currentCluster) {
+        currentCluster = { xSum: item.x, pois: [item.poi], count: 1 };
+      } else {
+        const avgX = currentCluster.xSum / currentCluster.count;
+        if (Math.abs(item.x - avgX) <= thresholdPercent) {
+          currentCluster.pois.push(item.poi);
+          currentCluster.xSum += item.x;
+          currentCluster.count += 1;
+        } else {
+          clusters.push({
+            x: currentCluster.xSum / currentCluster.count,
+            pois: currentCluster.pois,
+          });
+          currentCluster = { xSum: item.x, pois: [item.poi], count: 1 };
+        }
+      }
+    }
+
+    if (currentCluster) {
+      clusters.push({
+        x: currentCluster.xSum / currentCluster.count,
+        pois: currentCluster.pois,
+      });
+    }
+
+    return clusters;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // RENDERING ENGINE: MINIMALIST TACTICAL SPECTRUM
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Render the visual Tactical Price Spectrum Bar inside the target DOM container
    */
   public render(containerId: string = 'trigger-gauge-container'): void {
     const container = document.getElementById(containerId);
@@ -376,21 +613,10 @@ export class TriggerGaugeManager {
     const colorTheme = this.getMetricColor(s.current_metric_pc, s.required_metric_pc, s.state, s.conmutator_mode);
     const badgeInfo = this.getConmutatorModeBadgeInfo(s.conmutator_mode, s.state);
 
-    // Track dynamic range for visual bar: [0.00%, maxVal%]
-    const maxVal = Math.max(1.0, s.required_metric_pc * 1.5, Math.abs(s.current_metric_pc) * 1.2);
-    const minVal = 0.0;
-    const totalSpan = maxVal - minVal || 1;
-
-    const getTrackPosPercent = (val: number) => {
-      const clamped = Math.max(minVal, Math.min(maxVal, Math.max(0, val)));
-      return ((clamped - minVal) / totalSpan) * 100;
-    };
-
-    const targetPos = getTrackPosPercent(s.required_metric_pc);
-    const currentPos = getTrackPosPercent(s.current_metric_pc);
-
-    // Progress bar fill width from 0%
-    const fillWidth = Math.max(2, Math.min(100, currentPos));
+    // 1. Collect POIs & Viewport Extrema
+    const pois = this.getTacticalPois(s);
+    const { pMin, pMax } = this.calculateViewportExtrema(s.current_price, pois);
+    const clusters = this.clusterPois(pois, s.current_price, pMin, pMax, 3.5);
 
     const currSign = s.current_metric_pc > 0 ? '+' : '';
     const reqSign = s.required_metric_pc > 0 ? '+' : '';
@@ -399,12 +625,12 @@ export class TriggerGaugeManager {
     // Explanatory footer text
     let statusDetailText = '';
     if (isFlip) {
-      statusDetailText = `Giro conmutado a ${s.resolved_side}. Umbral de reversión alcanzado (+${s.required_metric_pc.toFixed(4)}%). Conmutador en polaridad invertida.`;
+      statusDetailText = `⚡ Giro conmutado a ${s.resolved_side}. Umbral de reversión alcanzado (+${s.required_metric_pc.toFixed(4)}%). Polaridad invertida.`;
     } else if (isReady) {
-      statusDetailText = 'Sin posición activa. Modo Semilla listo para apertura de ciclo.';
+      statusDetailText = '🌱 Sin posición activa. Modo Semilla listo para apertura de ciclo.';
     } else {
       const oppositeSide = s.position_side === 'LONG' ? 'SHORT (SELL)' : 'LONG (BUY)';
-      statusDetailText = `Acumulando en ${s.position_side} (${s.resolved_side}). A ${s.delta_remaining_pc.toFixed(4)}% del umbral para conmutar giro a ${oppositeSide}.`;
+      statusDetailText = `Acumulando en ${s.position_side} (${s.resolved_side}). A ${s.delta_remaining_pc.toFixed(4)}% de conmutar giro a ${oppositeSide}.`;
     }
 
     // Fast-path in-place DOM update if elements already exist
@@ -456,27 +682,24 @@ export class TriggerGaugeManager {
         chipMarketEl.innerText = `$${formatNum(s.current_price, decimals)}`;
       }
 
-      const fillEl = document.getElementById('tg-progress-fill');
-      if (fillEl) {
-        fillEl.style.width = `${fillWidth}%`;
-        fillEl.style.background = colorTheme.color;
+      const minLabelEl = document.getElementById('tg-min-label');
+      if (minLabelEl) {
+        minLabelEl.innerText = `◀ $${formatNum(pMin, decimals)} (-${(((s.current_price - pMin) / s.current_price) * 100).toFixed(2)}%)`;
       }
 
-      const markerEl = document.getElementById('tg-current-marker');
-      if (markerEl) {
-        markerEl.style.left = `${currentPos}%`;
-        markerEl.style.background = colorTheme.color;
+      const maxLabelEl = document.getElementById('tg-max-label');
+      if (maxLabelEl) {
+        maxLabelEl.innerText = `(+${(((pMax - s.current_price) / s.current_price) * 100).toFixed(2)}%) $${formatNum(pMax, decimals)} ▶`;
       }
 
-      const markerLabelEl = document.getElementById('tg-marker-label');
-      if (markerLabelEl) {
-        markerLabelEl.style.borderColor = colorTheme.color;
-        markerLabelEl.innerText = `${currSign}${s.current_metric_pc.toFixed(4)}%`;
+      const centerPillEl = document.getElementById('tg-center-price-pill');
+      if (centerPillEl) {
+        centerPillEl.innerText = `$${formatNum(s.current_price, decimals)}`;
       }
 
-      const targetLineEl = document.getElementById('tg-target-line');
-      if (targetLineEl) {
-        targetLineEl.style.left = `${targetPos}%`;
+      const pinsContainerEl = document.getElementById('tg-pins-container');
+      if (pinsContainerEl) {
+        pinsContainerEl.innerHTML = this.generatePinsHtml(clusters, decimals);
       }
 
       const detailEl = document.getElementById('tg-status-detail');
@@ -488,7 +711,7 @@ export class TriggerGaugeManager {
       return;
     }
 
-    // Full template creation if not yet initialized
+    // Full template creation
     container.innerHTML = `
       <div id="tg-card" data-inst="${s.instance_id}" class="trigger-gauge-card" style="border-color: ${colorTheme.border}; width: 100%; box-sizing: border-box;">
         <!-- Header -->
@@ -537,48 +760,38 @@ export class TriggerGaugeManager {
             </span>
           </div>
           <div class="trigger-metric-chip">
-            <span class="trigger-chip-lbl">Flip Target Price:</span>
+            <span class="trigger-chip-lbl">Flip Target:</span>
             <span id="tg-chip-target-price" class="trigger-chip-val" style="color: #a78bfa; font-weight: 700;">
               $${s.trigger_price !== null ? formatNum(s.trigger_price, decimals) : '--'}
             </span>
           </div>
           <div class="trigger-metric-chip">
-            <span class="trigger-chip-lbl">Entry Ref:</span>
-            <span class="trigger-chip-val" style="color: #94a3b8;">
-              $${s.entry_price > 0 ? formatNum(s.entry_price, decimals) : '--'}
-            </span>
-          </div>
-          <div class="trigger-metric-chip">
             <span class="trigger-chip-lbl">Market Price:</span>
-            <span id="tg-chip-market-price" class="trigger-chip-val" style="color: #e2e8f0;">
+            <span id="tg-chip-market-price" class="trigger-chip-val" style="color: #e2e8f0; font-weight: 700;">
               $${formatNum(s.current_price, decimals)}
             </span>
           </div>
         </div>
 
-        <!-- Proximity to Flip Reversal Bar / Gauge -->
+        <!-- Tactical Price Spectrum Bar (Propuesta Gama: Eje X Atemporal Bipartito Logarítmico) -->
         <div class="trigger-bar-container">
           <div class="trigger-bar-labels">
-            <span>[0.00% Base]</span>
-            <span style="color: #94a3b8;">Proximidad al Giro (Flip Reversal)</span>
-            <span>[+${maxVal.toFixed(2)}%]</span>
+            <span id="tg-min-label" style="color: #64748b; font-family: monospace; font-size: 0.68rem;">◀ $${formatNum(pMin, decimals)} (-${(((s.current_price - pMin) / s.current_price) * 100).toFixed(2)}%)</span>
+            <span style="color: #94a3b8; font-weight: 700; font-size: 0.7rem; letter-spacing: 0.05em;">ESPECTRO TÁCTICO DE PRECIOS & POLARIDAD</span>
+            <span id="tg-max-label" style="color: #64748b; font-family: monospace; font-size: 0.68rem;">(+${(((pMax - s.current_price) / s.current_price) * 100).toFixed(2)}%) $${formatNum(pMax, decimals)} ▶</span>
           </div>
 
-          <div class="trigger-bar-track">
-            <!-- Target Flip Line & Marker -->
-            <div id="tg-target-line" class="trigger-target-line" style="left: ${targetPos}%;" title="Umbral de Giro: ${reqSign}${s.required_metric_pc.toFixed(4)}%">
-              <div class="trigger-target-pin" style="color: #f59e0b; border-color: rgba(245,158,11,0.5);">⚡ Flip Target (${reqSign}${s.required_metric_pc.toFixed(3)}%)</div>
+          <div class="trigger-spectrum-track" style="position: relative; height: 32px; background: linear-gradient(90deg, rgba(16,185,129,0.06) 0%, rgba(15,23,42,0.8) 50%, rgba(239,68,68,0.06) 100%); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; overflow: visible;">
+            <!-- Fixed Central Axis at 50% (Current Market Price) -->
+            <div class="trigger-center-axis" style="position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: #ffffff; box-shadow: 0 0 10px #ffffff; z-index: 5;">
+              <div class="trigger-center-pill" style="position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 3px; font-size: 0.65rem; font-weight: 800; color: #000000; background: #ffffff; padding: 1px 6px; border-radius: 4px; white-space: nowrap; box-shadow: 0 0 12px rgba(255,255,255,0.8); z-index: 6;">
+                <span style="margin-right: 3px;">📍</span><span id="tg-center-price-pill">$${formatNum(s.current_price, decimals)}</span>
+              </div>
             </div>
 
-            <!-- Metric Progress Fill -->
-            <div id="tg-progress-fill" class="trigger-progress-fill" style="left: 0%; width: ${fillWidth}%; background: ${colorTheme.color};"></div>
-
-            <!-- Current Metric Marker Bubble -->
-            <div id="tg-current-marker" class="trigger-current-marker" style="left: ${currentPos}%; background: ${colorTheme.color};" title="Retroceso Actual: ${currSign}${s.current_metric_pc.toFixed(4)}%">
-              <span class="trigger-marker-dot"></span>
-              <span id="tg-marker-label" class="trigger-marker-label" style="border-color: ${colorTheme.color};">
-                ${currSign}${s.current_metric_pc.toFixed(4)}%
-              </span>
+            <!-- Dynamic Tactical Pins & Clusters Container -->
+            <div id="tg-pins-container" style="position: absolute; inset: 0; pointer-events: auto;">
+              ${this.generatePinsHtml(clusters, decimals)}
             </div>
           </div>
         </div>
@@ -590,6 +803,102 @@ export class TriggerGaugeManager {
         </div>
       </div>
     `;
+  }
+
+  /**
+   * Helper to generate HTML for clusters and micro-pins
+   */
+  private generatePinsHtml(clusters: TacticalCluster[], decimals: number): string {
+    return clusters
+      .map((c) => {
+        if (c.pois.length === 1) {
+          const p = c.pois[0];
+          const pinStyle = this.getPinVisuals(p);
+          const tooltipContent = `${p.label} | ${p.subLabel || ''} | $${formatNum(p.price, decimals)}`;
+          return `
+            <div class="tactical-micro-pin" style="position: absolute; left: ${c.x}%; top: 50%; transform: translate(-50%, -50%); z-index: 4; cursor: pointer;" title="${tooltipContent}">
+              <div style="display: flex; flex-direction: column; align-items: center;">
+                <div style="background: ${pinStyle.bg}; border: 1px solid ${pinStyle.border}; color: ${pinStyle.color}; font-size: 0.60rem; font-weight: 800; padding: 1px 4px; border-radius: 3px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.6); margin-bottom: 2px;">
+                  ${pinStyle.icon} ${p.label}
+                </div>
+                <div style="width: 8px; height: 8px; border-radius: 50%; background: ${pinStyle.color}; border: 2px solid #ffffff; box-shadow: 0 0 8px ${pinStyle.color};"></div>
+              </div>
+            </div>
+          `;
+        } else {
+          // Clustered badge (+N)
+          const primaryPoi = c.pois.find((p) => p.isPrimary) || c.pois[0];
+          const pinStyle = this.getPinVisuals(primaryPoi);
+          const clusterTooltip = c.pois
+            .map((p) => `• ${p.label}: $${formatNum(p.price, decimals)} (${p.subLabel || ''})`)
+            .join('\n');
+          return `
+            <div class="tactical-cluster-pin" style="position: absolute; left: ${c.x}%; top: 50%; transform: translate(-50%, -50%); z-index: 4; cursor: pointer;" title="${clusterTooltip}">
+              <div style="display: flex; flex-direction: column; align-items: center;">
+                <div style="background: rgba(15,23,42,0.95); border: 1px solid ${pinStyle.border}; color: ${pinStyle.color}; font-size: 0.60rem; font-weight: 800; padding: 1px 5px; border-radius: 4px; white-space: nowrap; box-shadow: 0 0 10px ${pinStyle.bg};">
+                  📦 +${c.pois.length} POIs
+                </div>
+                <div style="width: 10px; height: 10px; border-radius: 50%; background: ${pinStyle.color}; border: 2px solid #ffffff; box-shadow: 0 0 10px ${pinStyle.color};"></div>
+              </div>
+            </div>
+          `;
+        }
+      })
+      .join('');
+  }
+
+  /**
+   * Map POI to visual theme
+   */
+  private getPinVisuals(p: TacticalPOI): { color: string; bg: string; border: string; icon: string } {
+    switch (p.category) {
+      case 'FLIP_TRIGGER':
+        return {
+          color: '#f59e0b',
+          bg: 'rgba(245, 158, 11, 0.25)',
+          border: '#f59e0b',
+          icon: '⚡',
+        };
+      case 'ENTRY_REF':
+        return {
+          color: '#94a3b8',
+          bg: 'rgba(148, 163, 184, 0.2)',
+          border: '#94a3b8',
+          icon: '🏷️',
+        };
+      case 'REAL_ORDER':
+        if (p.side === 'BUY') {
+          return {
+            color: '#10b981',
+            bg: 'rgba(16, 185, 129, 0.25)',
+            border: '#10b981',
+            icon: '🟢',
+          };
+        } else {
+          return {
+            color: '#ef4444',
+            bg: 'rgba(239, 68, 68, 0.25)',
+            border: '#ef4444',
+            icon: '🔴',
+          };
+        }
+      case 'EXECUTED_PENDING':
+        return {
+          color: '#a855f7',
+          bg: 'rgba(168, 85, 247, 0.25)',
+          border: '#a855f7',
+          icon: '🔄',
+        };
+      case 'VIRTUAL_ORDER':
+      case 'NEW_PROCESS':
+      default:
+        return {
+          color: '#06b6d4',
+          bg: 'rgba(6, 182, 212, 0.25)',
+          border: '#06b6d4',
+          icon: '🔷',
+        };
+    }
   }
 
   /**
@@ -635,3 +944,4 @@ export class TriggerGaugeManager {
 }
 
 export const triggerGaugeManager = new TriggerGaugeManager();
+

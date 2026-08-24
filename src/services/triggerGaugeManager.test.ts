@@ -127,5 +127,95 @@ export function runTriggerGaugeVerification(): boolean {
     throw new Error(`Failed live onTick update check: got ${JSON.stringify(updatedStatus)}`);
   }
 
+  // 11. GAMA SPEC: Viewport Extrema Calculation
+  const testPois = [
+    { id: 'p1', price: 0.00255, category: 'REAL_ORDER' as const, side: 'BUY' as const, label: 'Buy 1' },
+    { id: 'p2', price: 0.00265, category: 'REAL_ORDER' as const, side: 'SELL' as const, label: 'Sell 1' },
+  ];
+  const extrema = manager.calculateViewportExtrema(0.00260, testPois);
+  if (extrema.pMin >= 0.00255 || extrema.pMax <= 0.00265) {
+    throw new Error(`Failed calculateViewportExtrema check: got pMin=${extrema.pMin}, pMax=${extrema.pMax}`);
+  }
+
+  // 12. GAMA SPEC: Logarithmic Bipartite Projection (50% Center Guarantee)
+  const centerCoord = manager.calculateLogCoordinate(0.00260, 0.00260, 0.00250, 0.00270);
+  if (Math.abs(centerCoord - 50.0) > 0.0001) {
+    throw new Error(`Failed calculateLogCoordinate center check: expected 50.0, got ${centerCoord}`);
+  }
+
+  const leftExtremeCoord = manager.calculateLogCoordinate(0.00250, 0.00260, 0.00250, 0.00270);
+  if (leftExtremeCoord !== 0) {
+    throw new Error(`Failed calculateLogCoordinate left extreme check: expected 0, got ${leftExtremeCoord}`);
+  }
+
+  const rightExtremeCoord = manager.calculateLogCoordinate(0.00270, 0.00260, 0.00250, 0.00270);
+  if (rightExtremeCoord !== 100) {
+    throw new Error(`Failed calculateLogCoordinate right extreme check: expected 100, got ${rightExtremeCoord}`);
+  }
+
+  const midLeftCoord = manager.calculateLogCoordinate(0.00255, 0.00260, 0.00250, 0.00270);
+  if (midLeftCoord <= 0 || midLeftCoord >= 50) {
+    throw new Error(`Failed calculateLogCoordinate mid-left check: got ${midLeftCoord}`);
+  }
+
+  const midRightCoord = manager.calculateLogCoordinate(0.00265, 0.00260, 0.00250, 0.00270);
+  if (midRightCoord <= 50 || midRightCoord >= 100) {
+    throw new Error(`Failed calculateLogCoordinate mid-right check: got ${midRightCoord}`);
+  }
+
+  // 13. GAMA SPEC: POI Aggregation & Sources Integration
+  manager.setPoiSources({
+    getOpenOrders: () => [
+      {
+        id: 'ord-123',
+        symbol: '1000PEPEUSDC',
+        type: 'LIMIT',
+        side: 'BUY',
+        price: 0.00254,
+        amount: 100000,
+        filled: 0,
+        remaining: 100000,
+        status: 'OPEN',
+        datetime: new Date().toISOString(),
+      },
+    ],
+    getActiveProcesses: () => [
+      {
+        id: 42,
+        pipeline_id: 1,
+        symbol: '1000PEPEUSDC',
+        status: 'WAITING_TP_FILL',
+        sub_status: 'TP_PLACED',
+        side: 'SELL',
+        amount: 100000,
+        last_order_price: 0.00266,
+      },
+    ],
+  });
+
+  const aggregatedPois = manager.getTacticalPois(sanitizedTrend);
+  const hasFlip = aggregatedPois.some((p) => p.category === 'FLIP_TRIGGER');
+  const hasEntry = aggregatedPois.some((p) => p.category === 'ENTRY_REF');
+  const hasOrder = aggregatedPois.some((p) => p.id === 'poi-order-ord-123');
+  const hasProc = aggregatedPois.some((p) => p.id === 'poi-proc-42');
+
+  if (!hasFlip || !hasEntry || !hasOrder || !hasProc) {
+    throw new Error(`Failed POI aggregation check: got ${JSON.stringify(aggregatedPois)}`);
+  }
+
+  // 14. GAMA SPEC: Clustering & Anti-Cluttering Engine
+  const clusterTestPois = [
+    { id: 'c1', price: 0.002550, category: 'REAL_ORDER' as const, side: 'BUY' as const, label: 'Order 1' },
+    { id: 'c2', price: 0.002551, category: 'REAL_ORDER' as const, side: 'BUY' as const, label: 'Order 2' }, // Very close -> should cluster
+    { id: 'c3', price: 0.002680, category: 'REAL_ORDER' as const, side: 'SELL' as const, label: 'Order 3' }, // Far -> separate
+  ];
+  const clusters = manager.clusterPois(clusterTestPois, 0.00260, 0.00250, 0.00270, 3.5);
+  if (clusters.length !== 2) {
+    throw new Error(`Failed clustering check: expected 2 clusters, got ${clusters.length}`);
+  }
+  if (clusters[0].pois.length !== 2 || clusters[1].pois.length !== 1) {
+    throw new Error(`Failed clustering POI grouping check: got ${JSON.stringify(clusters)}`);
+  }
+
   return true;
 }
