@@ -100,7 +100,11 @@ export class TriggerGaugeManager {
   public requestRender(): void {
     this.needsRender = true;
     if (this.rafId === null) {
-      this.rafId = requestAnimationFrame(this.renderLoop);
+      if (typeof requestAnimationFrame !== 'undefined') {
+        this.rafId = requestAnimationFrame(this.renderLoop);
+      } else {
+        this.render();
+      }
     }
   }
 
@@ -472,19 +476,23 @@ export class TriggerGaugeManager {
 
   /**
    * Pure Viewport Geometry: Calculate min and max bounds for the atemporal X-axis.
-   * Ensures safe non-zero bounds centered around marketPrice.
+   * Propuesta Gama: Implements dynamic floor margin (minFloorSpan) to decouple
+   * the outer frame scale from close solitary items, enabling fluid convergence
+   * kinematics toward center (50%) as price approaches the item.
    */
   public calculateViewportExtrema(
     marketPrice: number,
     pois: TacticalPOI[],
-    minSafetyMarginPc: number = 0.0075 // Default 0.75% margin if no points exist
+    minSafetyMarginPc: number = 0.0075 // Default 0.75% base floor margin
   ): { pMin: number; pMax: number } {
     if (marketPrice <= 0) {
       return { pMin: 0.99, pMax: 1.01 };
     }
 
-    let minPrice = marketPrice * (1 - minSafetyMarginPc);
-    let maxPrice = marketPrice * (1 + minSafetyMarginPc);
+    const minFloorSpan = marketPrice * minSafetyMarginPc;
+
+    let minPrice = marketPrice;
+    let maxPrice = marketPrice;
 
     for (const p of pois) {
       if (p.price > 0) {
@@ -493,10 +501,14 @@ export class TriggerGaugeManager {
       }
     }
 
-    // Add extra 8% padding beyond the outermost points for visual clarity
-    const leftSpan = marketPrice - minPrice;
-    const rightSpan = maxPrice - marketPrice;
+    // Propuesta Gama: Floor span decouples solitary nearby orders from collapsing pMin/pMax
+    const actualLeftSpan = marketPrice - minPrice;
+    const actualRightSpan = maxPrice - marketPrice;
 
+    const leftSpan = Math.max(minFloorSpan, actualLeftSpan);
+    const rightSpan = Math.max(minFloorSpan, actualRightSpan);
+
+    // Add extra 8% padding beyond the effective span for visual breathing room and non-clipping pins
     const pMin = Math.max(0.00000001, marketPrice - leftSpan * 1.08);
     const pMax = marketPrice + rightSpan * 1.08;
 
@@ -596,6 +608,7 @@ export class TriggerGaugeManager {
    * Render the visual Tactical Price Spectrum Bar inside the target DOM container
    */
   public render(containerId: string = 'trigger-gauge-container'): void {
+    if (typeof document === 'undefined') return;
     const container = document.getElementById(containerId);
     if (!container) return;
 
@@ -613,9 +626,10 @@ export class TriggerGaugeManager {
     const colorTheme = this.getMetricColor(s.current_metric_pc, s.required_metric_pc, s.state, s.conmutator_mode);
     const badgeInfo = this.getConmutatorModeBadgeInfo(s.conmutator_mode, s.state);
 
-    // 1. Collect POIs & Viewport Extrema
+    // 1. Collect POIs & Viewport Extrema (Propuesta Gama)
     const pois = this.getTacticalPois(s);
-    const { pMin, pMax } = this.calculateViewportExtrema(s.current_price, pois);
+    const dynamicFloorMarginPc = Math.max(0.005, (s.required_metric_pc || 0.75) / 100 * 0.6);
+    const { pMin, pMax } = this.calculateViewportExtrema(s.current_price, pois, dynamicFloorMarginPc);
     const clusters = this.clusterPois(pois, s.current_price, pMin, pMax, 3.5);
 
     const currSign = s.current_metric_pc > 0 ? '+' : '';

@@ -239,5 +239,47 @@ export function runTriggerGaugeVerification(): boolean {
     }
   }
 
+  // 16. GAMA SPEC: Kinematic Fluid Convergence Toward Center (50%)
+  // Test case: Single solitary order moving from far (-1.0%) to near (1 tick away ~ -0.01%)
+  const marketP = 0.00260;
+  const floorPc = 0.005; // 0.5% base floor
+
+  // A. When order is far (-1.0% = 0.002574)
+  const farPoi = [{ id: 'far-1', price: 0.002574, category: 'REAL_ORDER' as const, side: 'BUY' as const, label: 'Buy Far' }];
+  const extremaFar = manager.calculateViewportExtrema(marketP, farPoi, floorPc);
+  const xCoordFar = manager.calculateLogCoordinate(0.002574, marketP, extremaFar.pMin, extremaFar.pMax);
+
+  // B. When order is at moderate distance (-0.25% = 0.0025935)
+  const midPoi = [{ id: 'mid-1', price: 0.0025935, category: 'REAL_ORDER' as const, side: 'BUY' as const, label: 'Buy Mid' }];
+  const extremaMid = manager.calculateViewportExtrema(marketP, midPoi, floorPc);
+  const xCoordMid = manager.calculateLogCoordinate(0.0025935, marketP, extremaMid.pMin, extremaMid.pMax);
+
+  // C. When order is 1 tick away (-0.004% = 0.0025999)
+  const oneTickPoi = [{ id: 'tick-1', price: 0.0025999, category: 'REAL_ORDER' as const, side: 'BUY' as const, label: 'Buy 1Tick' }];
+  const extremaOneTick = manager.calculateViewportExtrema(marketP, oneTickPoi, floorPc);
+  const xCoordOneTick = manager.calculateLogCoordinate(0.0025999, marketP, extremaOneTick.pMin, extremaOneTick.pMax);
+
+  // Verification: The coordinate MUST move fluidly from extreme left (~4%) to center-adjacent (~49%)
+  if (xCoordFar >= 15 || xCoordFar <= 0) {
+    throw new Error(`Gama Kinematics Error: Far order expected in 0..15% range, got ${xCoordFar}`);
+  }
+  if (xCoordMid <= xCoordFar || xCoordMid >= 45) {
+    throw new Error(`Gama Kinematics Error: Mid order expected between Far and near center, got ${xCoordMid}`);
+  }
+  if (xCoordOneTick < 48 || xCoordOneTick >= 50) {
+    throw new Error(`Gama Kinematics Error: 1-tick order expected adjacent to center (48..49.99%), got ${xCoordOneTick}`);
+  }
+
   return true;
+}
+
+// Direct execution when invoked as a script
+if (typeof (globalThis as any).process !== 'undefined') {
+  try {
+    const result = runTriggerGaugeVerification();
+    console.log('✅ TriggerGaugeManager verification suite PASSED successfully! Result:', result);
+  } catch (err) {
+    console.error('❌ TriggerGaugeManager verification suite FAILED:', err);
+    throw err;
+  }
 }
