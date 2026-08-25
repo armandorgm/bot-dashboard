@@ -2,6 +2,7 @@ import { BotInstanceData, InstanceTelemetry, StrategyTriggerStatus } from '../ty
 import { getInstanceStatusColor } from '../utils/formatters';
 import { strategyManifestService } from './strategyManifestService';
 import { triggerGaugeManager } from './triggerGaugeManager';
+import { apiClient } from '../utils/apiClient';
 import { addLog } from './logger';
 
 export class InstanceService {
@@ -26,12 +27,11 @@ export class InstanceService {
     return this.loadedInstances.find((i) => String(i.id) === String(id));
   }
 
-  public async fetchBotInstancesList(parentPort: string = '8000'): Promise<BotInstanceData[]> {
+  public async fetchBotInstancesList(_parentPort?: string): Promise<BotInstanceData[]> {
     try {
-      const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      this.loadedInstances = data as BotInstanceData[];
+      const res = await apiClient.get<BotInstanceData[]>('/api/grid/instances');
+      if (!res.ok || !res.data) throw new Error(res.error || `HTTP ${res.status}`);
+      this.loadedInstances = res.data;
       return this.loadedInstances;
     } catch (err: any) {
       console.error('Failed to fetch bot instances:', err);
@@ -69,27 +69,25 @@ export class InstanceService {
     }
   }
 
-  public async fetchInstanceTelemetry(targetId: number | string, parentPort: string = '8000'): Promise<InstanceTelemetry | null> {
+  public async fetchInstanceTelemetry(targetId: number | string, _parentPort?: string): Promise<InstanceTelemetry | null> {
     try {
-      const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${targetId}/telemetry`);
-      if (res.ok) {
-        const telemetry: InstanceTelemetry = await res.json();
-        if (telemetry) {
-          this.updateInstanceCapitalDisplay(
-            telemetry.used_capital,
-            telemetry.allocated_capital,
-            telemetry.available_capital
-          );
-          if (telemetry.trigger_status) {
-            triggerGaugeManager.updateFromTelemetry(Number(targetId), telemetry.trigger_status);
-          }
-          const match = this.loadedInstances.find((i) => String(i.id) === String(targetId));
-          const pnlVal = telemetry.lifetime_pnl ?? (telemetry as any).total_pnl ?? telemetry.realized_pnl;
-          if (match && pnlVal !== undefined) {
-            match.lifetime_pnl = pnlVal;
-          }
-          return telemetry;
+      const res = await apiClient.get<InstanceTelemetry>(`/api/grid/instances/${targetId}/telemetry`);
+      if (res.ok && res.data) {
+        const telemetry: InstanceTelemetry = res.data;
+        this.updateInstanceCapitalDisplay(
+          telemetry.used_capital,
+          telemetry.allocated_capital,
+          telemetry.available_capital
+        );
+        if (telemetry.trigger_status) {
+          triggerGaugeManager.updateFromTelemetry(Number(targetId), telemetry.trigger_status);
         }
+        const match = this.loadedInstances.find((i) => String(i.id) === String(targetId));
+        const pnlVal = telemetry.lifetime_pnl ?? (telemetry as any).total_pnl ?? telemetry.realized_pnl;
+        if (match && pnlVal !== undefined) {
+          match.lifetime_pnl = pnlVal;
+        }
+        return telemetry;
       } else {
         const match = this.loadedInstances.find((i) => String(i.id) === String(targetId));
         if (match) {
@@ -107,21 +105,17 @@ export class InstanceService {
 
   public async fetchInstanceTriggerStatus(
     targetId: number | string,
-    parentPort: string = '8000'
+    _parentPort?: string
   ): Promise<StrategyTriggerStatus | null> {
     try {
-      const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${targetId}/trigger-status`);
-      if (res.ok) {
-        const triggerStatus: StrategyTriggerStatus = await res.json();
-        if (triggerStatus) {
-          triggerGaugeManager.setStatus(triggerStatus);
-          return triggerStatus;
-        }
+      const res = await apiClient.get<StrategyTriggerStatus>(`/api/grid/instances/${targetId}/trigger-status`);
+      if (res.ok && res.data) {
+        triggerGaugeManager.setStatus(res.data);
+        return res.data;
       }
     } catch (_) {}
     return null;
   }
-
 
   public renderInstanceForm(inst: BotInstanceData): void {
     const nameEl = document.getElementById('inst-edit-name') as HTMLInputElement;
@@ -224,7 +218,7 @@ export class InstanceService {
     if (modal) modal.style.display = 'none';
   }
 
-  public async executeStash(instanceId: number, parentPort: string = '8000', onFinished?: () => void): Promise<void> {
+  public async executeStash(instanceId: number, _parentPort?: string, onFinished?: () => void): Promise<void> {
     const currentInst = this.loadedInstances.find((i) => i.id === instanceId);
     const previousStatus = currentInst ? currentInst.status : 'ACTIVE';
 
@@ -236,16 +230,14 @@ export class InstanceService {
 
     addLog(`[STASH] Congelando Instancia #${instanceId} y aplanando posición a 0...`, 'info');
     try {
-      const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${instanceId}/stash`, {
-        method: 'POST',
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const res = await apiClient.post<any>(`/api/grid/instances/${instanceId}/stash`);
+      if (res.ok && res.data && res.data.success) {
+        const data = res.data;
         addLog(
           `[STASH ÉXITO] Instancia #${instanceId} congelada. Posición: ${data.position_amount} ${data.position_side} cerrada a 0. Snapshot #${data.snapshot_id}`,
           'info'
         );
-        await this.refreshInstanceModalDropdown(parentPort);
+        await this.refreshInstanceModalDropdown();
         if (onFinished) onFinished();
       } else {
         // Rollback
@@ -253,7 +245,7 @@ export class InstanceService {
         if (this.selectedInstanceId === instanceId) {
           this.updateInstanceStatusToggleUI(previousStatus);
         }
-        addLog(`[STASH ERROR] Fallo al congelar Instancia #${instanceId}: ${data.detail || JSON.stringify(data)}. Estado revertido.`, 'err');
+        addLog(`[STASH ERROR] Fallo al congelar Instancia #${instanceId}: ${res.error || 'Error'}. Estado revertido.`, 'err');
       }
     } catch (err: any) {
       // Rollback
@@ -265,7 +257,7 @@ export class InstanceService {
     }
   }
 
-  public async executePop(instanceId: number, mode: 'NOW' | 'NO_FEES', parentPort: string = '8000', onFinished?: () => void): Promise<void> {
+  public async executePop(instanceId: number, mode: 'NOW' | 'NO_FEES', _parentPort?: string, onFinished?: () => void): Promise<void> {
     const currentInst = this.loadedInstances.find((i) => i.id === instanceId);
     const previousStatus = currentInst ? currentInst.status : 'STASHED';
 
@@ -277,18 +269,14 @@ export class InstanceService {
 
     addLog(`[POP] Reanudando Instancia #${instanceId} en modo ${mode}...`, 'info');
     try {
-      const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${instanceId}/stash/pop`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const res = await apiClient.post<any>(`/api/grid/instances/${instanceId}/stash/pop`, { mode });
+      if (res.ok && res.data && res.data.success) {
+        const data = res.data;
         addLog(
           `[POP ÉXITO] Instancia #${instanceId} reanudada en modo ${mode}. Entrada: #${data.pop_entry_order_id}. Procesos reconstruidos: ${data.reconstructed_processes_count}`,
           'info'
         );
-        await this.refreshInstanceModalDropdown(parentPort);
+        await this.refreshInstanceModalDropdown();
         if (onFinished) onFinished();
       } else {
         // Rollback
@@ -296,7 +284,7 @@ export class InstanceService {
         if (this.selectedInstanceId === instanceId) {
           this.updateInstanceStatusToggleUI(previousStatus);
         }
-        addLog(`[POP ERROR] Fallo al reanudar Instancia #${instanceId}: ${data.detail || JSON.stringify(data)}. Estado revertido.`, 'err');
+        addLog(`[POP ERROR] Fallo al reanudar Instancia #${instanceId}: ${res.error || 'Error'}. Estado revertido.`, 'err');
       }
     } catch (err: any) {
       // Rollback
@@ -308,7 +296,7 @@ export class InstanceService {
     }
   }
 
-  public renderHeaderStashAction(status: string, instanceId: number, parentPort: string = '8000', onMatrixRefresh?: () => void): void {
+  public renderHeaderStashAction(status: string, instanceId: number, _parentPort?: string, onMatrixRefresh?: () => void): void {
     const container = document.getElementById('instance-stash-action-container');
     if (!container) return;
 
@@ -351,52 +339,48 @@ export class InstanceService {
           e.stopPropagation();
           popMenu.style.display = popMenu.style.display === 'none' ? 'flex' : 'none';
         });
-
         document.addEventListener('click', () => {
           if (popMenu) popMenu.style.display = 'none';
         });
       }
 
       if (btnPopNow) {
-        btnPopNow.addEventListener('click', () => {
-          if (popMenu) popMenu.style.display = 'none';
-          this.executePop(instanceId, 'NOW', parentPort, onMatrixRefresh);
-        });
+        btnPopNow.addEventListener('click', () => this.executePop(instanceId, 'NOW', undefined, onMatrixRefresh));
       }
-
       if (optNow) {
         optNow.addEventListener('click', () => {
           if (popMenu) popMenu.style.display = 'none';
-          this.executePop(instanceId, 'NOW', parentPort, onMatrixRefresh);
+          this.executePop(instanceId, 'NOW', undefined, onMatrixRefresh);
         });
       }
-
       if (optNoFees) {
         optNoFees.addEventListener('click', () => {
           if (popMenu) popMenu.style.display = 'none';
-          this.executePop(instanceId, 'NO_FEES', parentPort, onMatrixRefresh);
+          this.executePop(instanceId, 'NO_FEES', undefined, onMatrixRefresh);
         });
       }
     } else {
       container.innerHTML = `
-        <button id="btn-header-stash" class="btn-stash-action" title="Congelar grilla y aplanar posición a 0">
+        <button class="btn-stash-header" id="btn-header-stash" title="Congelar grilla y aplanar posición a 0">
           📦 STASH
         </button>
       `;
       const btnStash = document.getElementById('btn-header-stash');
       if (btnStash) {
-        btnStash.addEventListener('click', () => this.openStashConfirmModal(instanceId, instName));
+        btnStash.addEventListener('click', () => {
+          this.openStashConfirmModal(instanceId, instName);
+        });
       }
     }
   }
 
-  public async toggleInstanceStatus(parentPort: string = '8000'): Promise<void> {
+  public async toggleInstanceStatus(_parentPort?: string): Promise<void> {
     const currentInstId = this.selectedInstanceId || 1;
     const currentInst = this.loadedInstances.find((i) => i.id === currentInstId);
-    const currentStatus = currentInst ? currentInst.status.toUpperCase() : 'ACTIVE';
+    const currentStatus = (currentInst?.status || 'STOPPED').toUpperCase();
 
     if (currentStatus === 'STASHED') {
-      addLog(`[INSTANCE STATUS] La instancia #${currentInstId} está en STASH. Usa el botón Pop para reanudar.`, 'warn');
+      addLog(`[INSTANCE STATUS] La Instancia #${currentInstId} está congelada (STASHED). Use los botones 'Pop' para reanudarla.`, 'warn');
       return;
     }
 
@@ -410,11 +394,7 @@ export class InstanceService {
 
     try {
       addLog(`[INSTANCE STATUS] Solicitando cambio de estado para Instancia #${currentInstId}: ${currentStatus} -> ${newStatus}...`, 'info');
-      const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${currentInstId}/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      const res = await apiClient.post(`/api/grid/instances/${currentInstId}/status`, { status: newStatus });
 
       if (res.ok) {
         addLog(`[INSTANCE STATUS] Estado cambiado exitosamente a: ${newStatus}`, 'info');
@@ -468,7 +448,7 @@ export class InstanceService {
     this.renderInstanceForm(defaultNewInstance);
   }
 
-  public async saveInstanceConfigHot(parentPort: string = '8000'): Promise<void> {
+  public async saveInstanceConfigHot(_parentPort?: string): Promise<void> {
     const saveBtn = document.getElementById('btn-save-instance-modal');
     const feedbackEl = document.getElementById('instance-status-feedback');
 
@@ -547,26 +527,20 @@ export class InstanceService {
     };
 
     try {
-      const url = this.isCreatingNewInstance
-        ? `http://127.0.0.1:${parentPort}/api/grid/instances`
-        : `http://127.0.0.1:${parentPort}/api/grid/instances/${this.selectedInstanceId}`;
-      const method = this.isCreatingNewInstance ? 'POST' : 'PUT';
+      const endpoint = this.isCreatingNewInstance
+        ? '/api/grid/instances'
+        : `/api/grid/instances/${this.selectedInstanceId}`;
 
-      const res = await fetch(url, {
-        method: method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const res = this.isCreatingNewInstance
+        ? await apiClient.post<any>(endpoint, payload)
+        : await apiClient.put<any>(endpoint, payload);
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(
-          errData.detail || (this.isCreatingNewInstance ? 'Error creando instancia' : 'Error actualizando instancia')
-        );
+        throw new Error(res.error || (this.isCreatingNewInstance ? 'Error creando instancia' : 'Error actualizando instancia'));
       }
 
-      const resData = await res.json();
-      const createdOrUpdatedId = resData.instance?.id || this.selectedInstanceId;
+      const resData = res.data;
+      const createdOrUpdatedId = resData?.instance?.id || this.selectedInstanceId;
 
       if (feedbackEl) {
         feedbackEl.innerText = this.isCreatingNewInstance
@@ -586,7 +560,7 @@ export class InstanceService {
       }
 
       setTimeout(() => {
-        this.refreshInstanceModalDropdown(parentPort);
+        this.refreshInstanceModalDropdown();
       }, 500);
     } catch (err: any) {
       console.error('Failed to save/create instance config:', err);
@@ -595,14 +569,14 @@ export class InstanceService {
     }
   }
 
-  public async refreshInstanceModalDropdown(parentPort: string = '8000', currentConfigInstId?: string): Promise<void> {
+  public async refreshInstanceModalDropdown(_parentPort?: string, currentConfigInstId?: string): Promise<void> {
     const selectDropdown = document.getElementById('instance-select-dropdown') as HTMLSelectElement;
     const headerSelector = document.getElementById('header-instance-selector') as HTMLSelectElement;
 
     if (selectDropdown) selectDropdown.innerHTML = `<option value="">Cargando instancias...</option>`;
     if (headerSelector) headerSelector.innerHTML = `<option value="">Cargando bots...</option>`;
 
-    this.loadedInstances = await this.fetchBotInstancesList(parentPort);
+    this.loadedInstances = await this.fetchBotInstancesList();
 
     if (this.loadedInstances.length === 0) {
       if (selectDropdown) selectDropdown.innerHTML = `<option value="">No hay instancias registradas</option>`;
@@ -649,7 +623,7 @@ export class InstanceService {
     }
   }
 
-  public initModalListeners(parentPort: string = '8000', onSwitchInstance?: (id: string | number) => void): void {
+  public initModalListeners(_parentPort?: string, onSwitchInstance?: (id: string | number) => void): void {
     const modalEl = document.getElementById('instances-modal');
     const openBtn = document.getElementById('btn-open-instance-config');
     const closeBtn = document.getElementById('btn-close-instance-modal');
@@ -692,9 +666,9 @@ export class InstanceService {
           (saveBtn as HTMLElement).style.background = '#10b981';
         }
         if (modalEl) modalEl.style.display = 'flex';
-        await strategyManifestService.fetchManifest(parentPort);
+        await strategyManifestService.fetchManifest();
         strategyManifestService.syncStrategySelectorOptions();
-        this.refreshInstanceModalDropdown(parentPort);
+        this.refreshInstanceModalDropdown();
       });
     }
 
@@ -712,9 +686,9 @@ export class InstanceService {
           saveBtn.innerHTML = '💾 Guardar en Caliente';
           (saveBtn as HTMLElement).style.background = '#10b981';
         }
-        await strategyManifestService.fetchManifest(parentPort);
+        await strategyManifestService.fetchManifest();
         strategyManifestService.syncStrategySelectorOptions();
-        this.refreshInstanceModalDropdown(parentPort);
+        this.refreshInstanceModalDropdown();
       });
     }
 
@@ -739,7 +713,7 @@ export class InstanceService {
     }
 
     if (saveBtn) {
-      saveBtn.addEventListener('click', () => this.saveInstanceConfigHot(parentPort));
+      saveBtn.addEventListener('click', () => this.saveInstanceConfigHot());
     }
 
     // Stash confirmation modal bindings
@@ -762,7 +736,7 @@ export class InstanceService {
         if (this.pendingStashInstanceId !== null) {
           const idToStash = this.pendingStashInstanceId;
           this.closeStashConfirmModal();
-          await this.executeStash(idToStash, parentPort);
+          await this.executeStash(idToStash);
         }
       });
     }

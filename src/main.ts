@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 // Domain Models & Utilities
 import { InstanceConfig, TickData, HftEvent, ChasePipelineProcess, ModificationInfo } from './types';
 import { getSymbolDecimals } from './utils/formatters';
+import { apiClient } from './utils/apiClient';
 
 // Specialized Domain Services
 import { SessionMetricsTracker } from './services/sessionMetrics';
@@ -19,6 +20,7 @@ import { openOrdersManager } from './services/openOrdersManager';
 import { strategyManifestService } from './services/strategyManifestService';
 import { instanceService } from './services/instanceService';
 import { globalOverviewManager } from './services/globalOverviewManager';
+import { addonUiManager } from './services/addonUiManager';
 import { MarketFeedService } from './services/marketFeedService';
 import { triggerGaugeManager } from './services/triggerGaugeManager';
 import { metricsDisplayController } from './services/metricsDisplayController';
@@ -379,20 +381,19 @@ function processActivePipelinesData(data: ChasePipelineProcess[], rawText?: stri
 }
 
 async function fetchActivePipelines() {
-  const parentPort = config.parent_api_port || '8000';
   const currentSelected = instanceService.getSelectedInstanceId();
   const targetInstId = currentSelected !== null ? currentSelected : parseInt(config.instance_id || '1', 10);
 
   try {
-    fetch(`http://127.0.0.1:${parentPort}/api/sessions/current?instance_id=${targetInstId}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((resData) => {
-        if (resData && resData.data) {
-          if (typeof resData.data.net_pnl === 'number') {
-            sessionMetrics.setRealizedPnL(resData.data.net_pnl, targetInstId);
+    apiClient
+      .get(`/api/sessions/current?instance_id=${targetInstId}`)
+      .then((res) => {
+        if (res.ok && res.data && res.data.data) {
+          if (typeof res.data.data.net_pnl === 'number') {
+            sessionMetrics.setRealizedPnL(res.data.data.net_pnl, targetInstId);
           }
-          if (resData.data.start_time) {
-            const rawStr = String(resData.data.start_time);
+          if (res.data.data.start_time) {
+            const rawStr = String(res.data.data.start_time);
             const isoStr = rawStr.endsWith('Z') ? rawStr : rawStr + 'Z';
             const parsedTs = new Date(isoStr).getTime();
             if (!isNaN(parsedTs)) {
@@ -403,11 +404,9 @@ async function fetchActivePipelines() {
       })
       .catch(() => {});
 
-    const response = await fetch(`http://127.0.0.1:${parentPort}/api/pipelines/active`);
-    if (response.ok) {
-      const rawText = await response.clone().text();
-      const data: ChasePipelineProcess[] = await response.json();
-      processActivePipelinesData(data, rawText);
+    const res = await apiClient.get<ChasePipelineProcess[]>('/api/pipelines/active');
+    if (res.ok && Array.isArray(res.data)) {
+      processActivePipelinesData(res.data, JSON.stringify(res.data));
     }
   } catch (err) {
     console.warn('Failed to fetch active pipeline processes:', err);
@@ -584,32 +583,35 @@ window.addEventListener('DOMContentLoaded', async () => {
   const overviewCallbacks = {
     onMonitor: (id: string) => {
       switchActiveInstance(id);
-      globalOverviewManager.setViewMode('dashboard', () => chartRenderer.handleResize(), config.parent_api_port);
+      globalOverviewManager.setViewMode('dashboard', () => chartRenderer.handleResize());
     },
     onStash: (id: number, name: string) => instanceService.openStashConfirmModal(id, name),
     onPop: (id: number, mode: 'NOW' | 'NO_FEES') =>
-      instanceService.executePop(id, mode, config.parent_api_port, () =>
-        globalOverviewManager.fetchGlobalOverview(config.parent_api_port, overviewCallbacks)
+      instanceService.executePop(id, mode, undefined, () =>
+        globalOverviewManager.fetchGlobalOverview()
       ),
   };
+
+  // Register persistent callbacks and delegation immediately
+  globalOverviewManager.setCallbacks(overviewCallbacks);
 
   const btnNavHome = document.getElementById('btn-nav-home');
   if (btnNavHome) {
     btnNavHome.addEventListener('click', () =>
-      globalOverviewManager.setViewMode('home', () => chartRenderer.handleResize(), config.parent_api_port)
+      globalOverviewManager.setViewMode('home', () => chartRenderer.handleResize())
     );
   }
 
   const btnRefreshOverview = document.getElementById('btn-refresh-overview');
   if (btnRefreshOverview) {
     btnRefreshOverview.addEventListener('click', () =>
-      globalOverviewManager.fetchGlobalOverview(config.parent_api_port, overviewCallbacks)
+      globalOverviewManager.fetchGlobalOverview()
     );
   }
 
   const instanceStatusToggle = document.getElementById('instance-status-toggle');
   if (instanceStatusToggle) {
-    instanceStatusToggle.addEventListener('click', () => instanceService.toggleInstanceStatus(config.parent_api_port));
+    instanceStatusToggle.addEventListener('click', () => instanceService.toggleInstanceStatus());
   }
 
   // Base Amount USD
@@ -617,18 +619,15 @@ window.addEventListener('DOMContentLoaded', async () => {
   const btnSaveBaseAmount = document.getElementById('btn-save-base-amount') as HTMLButtonElement | null;
 
   if (baseAmountInput && btnSaveBaseAmount) {
-    const parentPort = config?.parent_api_port || '8000';
-    fetch(`http://127.0.0.1:${parentPort}/api/bot/config`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && data.trade_amount) {
-          baseAmountInput.value = data.trade_amount.toString();
+    apiClient.get('/api/bot/config')
+      .then((res) => {
+        if (res.ok && res.data && res.data.trade_amount) {
+          baseAmountInput.value = res.data.trade_amount.toString();
         }
       })
       .catch((err) => console.error('[BASE USD] Error fetching initial config:', err));
 
     btnSaveBaseAmount.addEventListener('click', async () => {
-      const currentParentPort = config?.parent_api_port || '8000';
       const val = parseFloat(baseAmountInput.value);
       if (isNaN(val) || val <= 0) {
         addLog('[BASE USD ERROR] Ingrese un valor mayor a 0', 'warn');
@@ -637,15 +636,11 @@ window.addEventListener('DOMContentLoaded', async () => {
       try {
         btnSaveBaseAmount.disabled = true;
         btnSaveBaseAmount.textContent = '...';
-        const res = await fetch(`http://127.0.0.1:${currentParentPort}/api/bot/config`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ trade_amount: val }),
-        });
+        const res = await apiClient.post('/api/bot/config', { trade_amount: val });
         if (res.ok) {
           addLog(`[BASE USD UPDATED] Nuevo valor base en PostgreSQL: $${val} USD`, 'info');
         } else {
-          addLog(`[BASE USD ERROR] Error en la API al guardar`, 'err');
+          addLog(`[BASE USD ERROR] Error en la API al guardar: ${res.error || 'Error'}`, 'err');
         }
       } catch (err) {
         addLog(`[BASE USD ERROR] ${err}`, 'err');
@@ -670,7 +665,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   };
 
   const setCycleSpeed = async () => {
-    const parentPort = config?.parent_api_port || '8000';
     const currentInstId = instanceService.getSelectedInstanceId() || parseInt(config.instance_id || '1', 10);
     const val = parseFloat(cycleSpeedInput?.value || '10');
 
@@ -685,15 +679,10 @@ window.addEventListener('DOMContentLoaded', async () => {
         btnSetCycleSpeed.textContent = '...';
       }
       addLog(`[CYCLE SPEED] Aplicando intervalo ${val}s a Instancia #${currentInstId}...`, 'info');
-      const res = await fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/${currentInstId}/cycle-speed`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ interval_seconds: val }),
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const res = await apiClient.post<any>(`/api/grid/instances/${currentInstId}/cycle-speed`, { interval_seconds: val });
+      if (res.ok && res.data) {
         addLog(
-          `[CYCLE SPEED ✓] ${data.previous_interval_seconds}s → ${val}s — Instancia #${currentInstId} (efectivo en próximo ciclo)`,
+          `[CYCLE SPEED ✓] ${res.data.previous_interval_seconds}s → ${val}s — Instancia #${currentInstId} (efectivo en próximo ciclo)`,
           'info'
         );
         const updatedInst = instanceService.findInstance(currentInstId);
@@ -701,8 +690,7 @@ window.addEventListener('DOMContentLoaded', async () => {
           updatedInst.params = { ...updatedInst.params, interval_seconds: val };
         }
       } else {
-        const errorText = await res.text();
-        addLog(`[CYCLE SPEED ERROR] HTTP ${res.status}: ${errorText}`, 'err');
+        addLog(`[CYCLE SPEED ERROR] ${res.error || 'Error'}`, 'err');
       }
     } catch (err: any) {
       addLog(`[CYCLE SPEED ERROR] ${err?.message ?? err}`, 'err');
@@ -893,25 +881,30 @@ window.addEventListener('DOMContentLoaded', async () => {
   marketFeed.connectBinancePublicWs(config.symbol);
   marketFeed.connectLocalBotWebSocket();
 
-  // Initial Sync & Interval Timers
+  // Initial Sync
   fetchActivePipelines();
-  instanceService.fetchInstanceTelemetry(config.instance_id, config.parent_api_port);
-  instanceService.fetchInstanceTriggerStatus(config.instance_id, config.parent_api_port);
-
-  setInterval(() => {
-    if (!document.hidden) {
-      const activeId = instanceService.getSelectedInstanceId() || config.instance_id;
-      fetchActivePipelines();
-      instanceService.fetchInstanceTelemetry(activeId, config.parent_api_port);
-      instanceService.fetchInstanceTriggerStatus(activeId, config.parent_api_port);
-    }
-  }, 60000);
-
+  instanceService.fetchInstanceTelemetry(config.instance_id);
+  instanceService.fetchInstanceTriggerStatus(config.instance_id);
 
   // Initialize Data Source Controls, Modal Listeners and Global Overview
   dataSourceManager.initControls();
-  instanceService.initModalListeners(config.parent_api_port, (id) => switchActiveInstance(id));
-  globalOverviewManager.setViewMode('home', () => chartRenderer.handleResize(), config.parent_api_port);
+  instanceService.initModalListeners(undefined, (id) => switchActiveInstance(id));
+  globalOverviewManager.setViewMode('home', () => chartRenderer.handleResize());
+
+  // Unified Polling Scheduler (DRY)
+  setInterval(() => {
+    if (document.hidden) return;
+
+    if (globalOverviewManager.getViewMode() === 'home') {
+      globalOverviewManager.fetchGlobalOverview();
+    } else {
+      const activeId = instanceService.getSelectedInstanceId() || config.instance_id;
+      fetchActivePipelines();
+      instanceService.fetchInstanceTelemetry(activeId);
+      instanceService.fetchInstanceTriggerStatus(activeId);
+      openOrdersManager.fetchOpenOrders(undefined, config.symbol);
+    }
+  }, 60000);
 
   // Network & API Settings Initialization
   try {
@@ -932,65 +925,52 @@ window.addEventListener('DOMContentLoaded', async () => {
     marketFeed.connectLocalBotWebSocket();
 
     // Re-sync open orders, pipelines, telemetry, instances, and addons on the new port
-    openOrdersManager.fetchOpenOrders(config.parent_api_port, config.symbol);
+    openOrdersManager.fetchOpenOrders(undefined, config.symbol);
     fetchActivePipelines();
     const activeId = instanceService.getSelectedInstanceId() || config.instance_id;
-    instanceService.fetchInstanceTelemetry(activeId, config.parent_api_port);
-    instanceService.fetchInstanceTriggerStatus(activeId, config.parent_api_port);
-    strategyManifestService.fetchManifest(config.parent_api_port).then(() => {
+    instanceService.fetchInstanceTelemetry(activeId);
+    instanceService.fetchInstanceTriggerStatus(activeId);
+    strategyManifestService.fetchManifest().then(() => {
       strategyManifestService.syncStrategySelectorOptions();
-      instanceService.refreshInstanceModalDropdown(config.parent_api_port, config.instance_id);
+      instanceService.refreshInstanceModalDropdown(undefined, config.instance_id);
     });
     if (globalOverviewManager.getViewMode() === 'home') {
-      globalOverviewManager.fetchGlobalOverview(config.parent_api_port, overviewCallbacks);
+      globalOverviewManager.fetchGlobalOverview();
     }
-    import('./services/addonUiManager').then(({ addonUiManager }) => {
-      addonUiManager.setParentPort(config.parent_api_port);
-      addonUiManager.fetchAddons();
-    });
+    addonUiManager.fetchAddons();
   });
 
-  setInterval(() => {
-    if (document.hidden) return;
-    if (globalOverviewManager.getViewMode() === 'home') {
-      globalOverviewManager.fetchGlobalOverview(config.parent_api_port, overviewCallbacks);
-    }
-  }, 60000);
-
-  strategyManifestService.fetchManifest(config.parent_api_port).then(() => {
+  strategyManifestService.fetchManifest().then(() => {
     strategyManifestService.syncStrategySelectorOptions();
-    instanceService.refreshInstanceModalDropdown(config.parent_api_port, config.instance_id);
+    instanceService.refreshInstanceModalDropdown(undefined, config.instance_id);
   });
 
   // Initialize Addons Modal & UI Manager
-  import('./services/addonUiManager').then(({ addonUiManager }) => {
-    addonUiManager.setParentPort(config.parent_api_port);
-    const addonsModal = document.getElementById('addons-modal');
-    const openAddonsBtn = document.getElementById('btn-open-addons-modal');
-    const closeAddonsBtn = document.getElementById('btn-close-addons-modal');
-    const refreshAddonsBtn = document.getElementById('btn-refresh-addons-modal');
+  const addonsModal = document.getElementById('addons-modal');
+  const openAddonsBtn = document.getElementById('btn-open-addons-modal');
+  const closeAddonsBtn = document.getElementById('btn-close-addons-modal');
+  const refreshAddonsBtn = document.getElementById('btn-refresh-addons-modal');
 
-    if (openAddonsBtn && addonsModal) {
-      openAddonsBtn.addEventListener('click', () => {
-        addonsModal.style.display = 'flex';
-        addonUiManager.fetchAddons();
-      });
-    }
+  if (openAddonsBtn && addonsModal) {
+    openAddonsBtn.addEventListener('click', () => {
+      addonsModal.style.display = 'flex';
+      addonUiManager.fetchAddons();
+    });
+  }
 
-    if (closeAddonsBtn && addonsModal) {
-      closeAddonsBtn.addEventListener('click', () => {
-        addonsModal.style.display = 'none';
-      });
-    }
+  if (closeAddonsBtn && addonsModal) {
+    closeAddonsBtn.addEventListener('click', () => {
+      addonsModal.style.display = 'none';
+    });
+  }
 
-    if (refreshAddonsBtn) {
-      refreshAddonsBtn.addEventListener('click', () => {
-        addonUiManager.fetchAddons();
-      });
-    }
+  if (refreshAddonsBtn) {
+    refreshAddonsBtn.addEventListener('click', () => {
+      addonUiManager.fetchAddons();
+    });
+  }
 
-    // Initial silent load of addons status
-    addonUiManager.fetchAddons();
-  });
+  // Initial silent load of addons status
+  addonUiManager.fetchAddons();
 });
 

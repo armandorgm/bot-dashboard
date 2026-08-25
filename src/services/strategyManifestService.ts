@@ -49,24 +49,20 @@ export const DEFAULT_SLOT_OPTIONS: Record<string, Array<{ value: string; label: 
   ],
 };
 
+import { apiClient } from '../utils/apiClient';
+
 export class StrategyManifestService {
   private manifest: StrategiesManifest = DEFAULT_STRATEGIES_MANIFEST;
 
-  public async fetchManifest(parentPort: string = '8000'): Promise<StrategiesManifest> {
-    const endpoints = [
-      `http://127.0.0.1:${parentPort}/api/strategies/manifest`,
-      `http://127.0.0.1:${parentPort}/api/grid/strategies/manifest`,
-    ];
+  public async fetchManifest(_parentPort?: string): Promise<StrategiesManifest> {
+    const endpoints = ['/api/strategies/manifest', '/api/grid/strategies/manifest'];
 
-    for (const url of endpoints) {
+    for (const ep of endpoints) {
       try {
-        const res = await fetch(url);
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.strategies) {
-            this.manifest = data as StrategiesManifest;
-            return this.manifest;
-          }
+        const res = await apiClient.get<StrategiesManifest>(ep);
+        if (res.ok && res.data && res.data.strategies) {
+          this.manifest = res.data;
+          return this.manifest;
         }
       } catch (_) {
         // Fallback to next

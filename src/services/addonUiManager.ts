@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { apiClient } from '../utils/apiClient';
 import { addLog } from './logger';
 
 export interface AddonItem {
@@ -17,19 +18,17 @@ export interface AddonItem {
 
 export class AddonUiManager {
   private addons: AddonItem[] = [];
-  private parentPort: string = '8000';
-
-  public setParentPort(port: string) {
-    this.parentPort = port;
-  }
+  private isDelegationInitialized = false;
 
   public async fetchAddons(): Promise<AddonItem[]> {
     try {
-      const res = await fetch(`http://127.0.0.1:${this.parentPort}/api/addons`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      this.addons = await res.json();
-      this.renderAddonsList();
-      return this.addons;
+      const res = await apiClient.get<AddonItem[]>('/api/addons');
+      if (res.ok && Array.isArray(res.data)) {
+        this.addons = res.data;
+        this.renderAddonsList();
+        return this.addons;
+      }
+      return [];
     } catch (e: any) {
       console.error('Error fetching addons:', e);
       return [];
@@ -40,14 +39,9 @@ export class AddonUiManager {
     const endpoint = shouldEnable ? 'start' : 'stop';
     try {
       addLog(`[ADDON] Solicitando ${shouldEnable ? 'encendido' : 'apagado'} de '${name}'...`, 'info');
-      const res = await fetch(`http://127.0.0.1:${this.parentPort}/api/addons/${name}/${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ context: {} }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      
-      await res.json();
+      const res = await apiClient.post(`/api/addons/${name}/${endpoint}`, { context: {} });
+      if (!res.ok) throw new Error(res.error || `HTTP ${res.status}`);
+
       addLog(`[ADDON] '${name}' ${shouldEnable ? 'activado' : 'desactivado'} con éxito.`, 'info');
 
       // If enabled and has UI, open dedicated native Tauri window
@@ -93,6 +87,30 @@ export class AddonUiManager {
     const container = document.getElementById('addons-list-container');
     if (!container) return;
 
+    if (!this.isDelegationInitialized) {
+      container.addEventListener('click', (e) => {
+        const toggleBtn = (e.target as HTMLElement).closest('.btn-addon-toggle') as HTMLElement | null;
+        if (toggleBtn) {
+          const name = toggleBtn.getAttribute('data-addon-name');
+          const action = toggleBtn.getAttribute('data-action');
+          if (name) {
+            this.toggleAddon(name, action === 'start');
+          }
+          return;
+        }
+
+        const windowBtn = (e.target as HTMLElement).closest('.btn-addon-window') as HTMLElement | null;
+        if (windowBtn) {
+          const name = windowBtn.getAttribute('data-addon-name');
+          const addon = this.addons.find((a) => a.name === name);
+          if (addon) {
+            this.openAddonWindow(addon);
+          }
+        }
+      });
+      this.isDelegationInitialized = true;
+    }
+
     if (this.addons.length === 0) {
       container.innerHTML = `<div style="color: #6b7280; font-size: 11px; padding: 8px;">No hay addons registrados.</div>`;
       return;
@@ -126,29 +144,6 @@ export class AddonUiManager {
         `;
       })
       .join('');
-
-    // Attach click handlers
-    container.querySelectorAll('.btn-addon-toggle').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        const target = e.currentTarget as HTMLElement;
-        const name = target.getAttribute('data-addon-name');
-        const action = target.getAttribute('data-action');
-        if (name) {
-          this.toggleAddon(name, action === 'start');
-        }
-      });
-    });
-
-    container.querySelectorAll('.btn-addon-window').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        const target = e.currentTarget as HTMLElement;
-        const name = target.getAttribute('data-addon-name');
-        const addon = this.addons.find((a) => a.name === name);
-        if (addon) {
-          this.openAddonWindow(addon);
-        }
-      });
-    });
   }
 }
 

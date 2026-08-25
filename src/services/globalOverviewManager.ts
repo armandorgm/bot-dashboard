@@ -1,15 +1,66 @@
 import { GlobalOverviewResponse, AllInstancesTelemetryResponse } from '../types';
 import { getInstanceStatusColor } from '../utils/formatters';
 import { triggerGaugeManager } from './triggerGaugeManager';
+import { apiClient } from '../utils/apiClient';
+import { addLog } from './logger';
+
+export interface OverviewCallbacks {
+  onMonitor: (id: string) => void;
+  onStash: (id: number, name: string) => void;
+  onPop: (id: number, mode: 'NOW' | 'NO_FEES') => void;
+}
 
 export class GlobalOverviewManager {
   private viewMode: 'home' | 'dashboard' = 'home';
+  private callbacks?: OverviewCallbacks;
+  private isDelegationInitialized = false;
 
   public getViewMode(): 'home' | 'dashboard' {
     return this.viewMode;
   }
 
-  public setViewMode(mode: 'home' | 'dashboard', onDashboardShown?: () => void, parentPort: string = '8000'): void {
+  public setCallbacks(callbacks: OverviewCallbacks): void {
+    this.callbacks = callbacks;
+    this.initTableEventDelegation();
+  }
+
+  public initTableEventDelegation(): void {
+    if (this.isDelegationInitialized) return;
+    const tbody = document.getElementById('overview-instances-tbody');
+    if (!tbody) return;
+
+    tbody.addEventListener('click', (e) => {
+      const target = (e.target as HTMLElement).closest('button');
+      if (!target) return;
+
+      const instIdStr = target.getAttribute('data-id');
+      if (!instIdStr) return;
+      const instId = parseInt(instIdStr, 10);
+
+      if (target.classList.contains('btn-monitor-instance')) {
+        if (this.callbacks?.onMonitor) {
+          this.callbacks.onMonitor(instIdStr);
+        }
+      } else if (target.classList.contains('btn-matrix-stash')) {
+        const instName = target.getAttribute('data-name') || `Bot #${instId}`;
+        if (this.callbacks?.onStash) {
+          this.callbacks.onStash(instId, instName);
+        }
+      } else if (target.classList.contains('btn-matrix-pop-now')) {
+        if (this.callbacks?.onPop) {
+          this.callbacks.onPop(instId, 'NOW');
+        }
+      } else if (target.classList.contains('btn-matrix-pop-nofees')) {
+        if (this.callbacks?.onPop) {
+          this.callbacks.onPop(instId, 'NO_FEES');
+        }
+      }
+    });
+
+    this.isDelegationInitialized = true;
+  }
+
+  public setViewMode(mode: 'home' | 'dashboard', onDashboardShown?: () => void, parentPort?: string): void {
     this.viewMode = mode;
     const overviewPage = document.getElementById('global-overview-page');
     const dashboardPage = document.getElementById('instance-dashboard-page');
@@ -37,53 +88,53 @@ export class GlobalOverviewManager {
   }
 
   public async fetchGlobalOverview(
-    parentPort: string = '8000',
-    callbacks?: {
-      onMonitor: (id: string) => void;
-      onStash: (id: number, name: string) => void;
-      onPop: (id: number, mode: 'NOW' | 'NO_FEES') => void;
-    }
+    _parentPort?: string,
+    callbacks?: OverviewCallbacks
   ): Promise<GlobalOverviewResponse | null> {
+    if (callbacks) {
+      this.callbacks = callbacks;
+    }
+    this.initTableEventDelegation();
+
     const tbody = document.getElementById('overview-instances-tbody');
     try {
       const [overviewRes, telemetryRes] = await Promise.allSettled([
-        fetch(`http://127.0.0.1:${parentPort}/api/instances/overview`),
-        fetch(`http://127.0.0.1:${parentPort}/api/grid/instances/telemetry`),
+        apiClient.get<GlobalOverviewResponse>('/api/instances/overview'),
+        apiClient.get<AllInstancesTelemetryResponse>('/api/grid/instances/telemetry'),
       ]);
 
-      if (overviewRes.status === 'fulfilled' && overviewRes.value.ok) {
-        const data: GlobalOverviewResponse = await overviewRes.value.json();
+      if (overviewRes.status === 'fulfilled' && overviewRes.value.ok && overviewRes.value.data) {
+        const data: GlobalOverviewResponse = overviewRes.value.data;
 
         // Hydrate each instance row with real-time telemetry if available
-        if (telemetryRes.status === 'fulfilled' && telemetryRes.value.ok) {
-          try {
-            const telemetryMap: AllInstancesTelemetryResponse = await telemetryRes.value.json();
-            if (telemetryMap && typeof telemetryMap === 'object') {
-              data.instances = data.instances.map((inst) => {
-                const liveTele = telemetryMap[inst.id] || telemetryMap[String(inst.id)];
-                if (liveTele) {
-                  return {
-                    ...inst,
-                    used_capital: typeof liveTele.used_capital === 'number' ? liveTele.used_capital : inst.used_capital,
-                    allocated_capital: typeof liveTele.allocated_capital === 'number' ? liveTele.allocated_capital : inst.allocated_capital,
-                    unrealized_pnl: typeof liveTele.unrealized_pnl === 'number' ? liveTele.unrealized_pnl : inst.unrealized_pnl,
-                    status: liveTele.status || inst.status,
-                  };
-                }
-                return inst;
-              });
-            }
-          } catch (_) {}
+        if (telemetryRes.status === 'fulfilled' && telemetryRes.value.ok && telemetryRes.value.data) {
+          const telemetryMap = telemetryRes.value.data;
+          if (telemetryMap && typeof telemetryMap === 'object') {
+            data.instances = data.instances.map((inst) => {
+              const liveTele = telemetryMap[inst.id] || telemetryMap[String(inst.id)];
+              if (liveTele) {
+                return {
+                  ...inst,
+                  used_capital: typeof liveTele.used_capital === 'number' ? liveTele.used_capital : inst.used_capital,
+                  allocated_capital: typeof liveTele.allocated_capital === 'number' ? liveTele.allocated_capital : inst.allocated_capital,
+                  unrealized_pnl: typeof liveTele.unrealized_pnl === 'number' ? liveTele.unrealized_pnl : inst.unrealized_pnl,
+                  status: liveTele.status || inst.status,
+                };
+              }
+              return inst;
+            });
+          }
         }
 
-        this.renderGlobalOverview(data, callbacks);
+        this.renderGlobalOverview(data);
         return data;
       } else {
         if (tbody) {
           tbody.innerHTML = `<tr><td colspan="11" style="padding: 24px; text-align: center; color: #ef4444;">Error al cargar la matriz de instancias</td></tr>`;
         }
       }
-    } catch (_) {
+    } catch (err: any) {
+      addLog(`[OVERVIEW] Fallo de conexión con la matriz de instancias: ${err?.message || err}`, 'warn');
       if (tbody) {
         tbody.innerHTML = `<tr><td colspan="11" style="padding: 24px; text-align: center; color: #ef4444;">Fallo de conexión al backend maestro</td></tr>`;
       }
@@ -91,14 +142,7 @@ export class GlobalOverviewManager {
     return null;
   }
 
-  public renderGlobalOverview(
-    data: GlobalOverviewResponse,
-    callbacks?: {
-      onMonitor: (id: string) => void;
-      onStash: (id: number, name: string) => void;
-      onPop: (id: number, mode: 'NOW' | 'NO_FEES') => void;
-    }
-  ): void {
+  public renderGlobalOverview(data: GlobalOverviewResponse): void {
     const summary = data.portfolio_summary;
     const instances = data.instances;
 
@@ -164,11 +208,7 @@ export class GlobalOverviewManager {
       return;
     }
 
-    // Dynamic sorting:
-    // 1) Status Priority (ACTIVE=0, PAUSED=1, STOPPED=2)
-    // 2) NET Session PnL (descending)
-    // 3) NET Lifetime PnL (descending)
-    const statusPriority: Record<string, number> = { ACTIVE: 0, PAUSED: 1, STOPPED: 2 };
+    const statusPriority: Record<string, number> = { ACTIVE: 0, PAUSED: 1, STOPPED: 2, STASHED: 3 };
     const sortedInstances = [...instances].sort((a, b) => {
       const pA = statusPriority[a.status.toUpperCase()] ?? 99;
       const pB = statusPriority[b.status.toUpperCase()] ?? 99;
@@ -346,43 +386,6 @@ export class GlobalOverviewManager {
         `;
       })
       .join('');
-
-    // Attach listeners
-    if (callbacks?.onMonitor) {
-      document.querySelectorAll('.btn-monitor-instance').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-          const instId = (e.currentTarget as HTMLButtonElement).getAttribute('data-id');
-          if (instId) callbacks.onMonitor(instId);
-        });
-      });
-    }
-
-    if (callbacks?.onStash) {
-      document.querySelectorAll('.btn-matrix-stash').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-          const targetBtn = e.currentTarget as HTMLButtonElement;
-          const instId = targetBtn.getAttribute('data-id');
-          const instName = targetBtn.getAttribute('data-name') || 'Instancia';
-          if (instId) callbacks.onStash(parseInt(instId, 10), instName);
-        });
-      });
-    }
-
-    if (callbacks?.onPop) {
-      document.querySelectorAll('.btn-matrix-pop-now').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-          const instId = (e.currentTarget as HTMLButtonElement).getAttribute('data-id');
-          if (instId) callbacks.onPop(parseInt(instId, 10), 'NOW');
-        });
-      });
-
-      document.querySelectorAll('.btn-matrix-pop-nofees').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-          const instId = (e.currentTarget as HTMLButtonElement).getAttribute('data-id');
-          if (instId) callbacks.onPop(parseInt(instId, 10), 'NO_FEES');
-        });
-      });
-    }
   }
 }
 
