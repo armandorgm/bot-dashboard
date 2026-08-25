@@ -35,11 +35,14 @@
             </button>
           </div>
 
-          <div style="display: flex; align-items: center; gap: 6px; margin-left: 12px; background: #111827; padding: 2px 8px; border-radius: 6px; border: 1px solid #374151;">
-            <span style="font-size: 11px; color: #9ca3af; font-family: 'JetBrains Mono', monospace; font-weight: bold;">BOT:</span>
-            <select id="header-instance-selector" style="background: transparent; color: #10b981; border: none; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: bold; outline: none; cursor: pointer;">
+          <div class="instance-navigation-strip" style="display: flex; align-items: center; gap: 4px; margin-left: 12px; background: #111827; padding: 2px 6px; border-radius: 6px; border: 1px solid #374151;">
+            <button id="btn-prev-instance" class="btn-instance-nav" title="Instancia anterior [Atajo: [ o Alt+Left]" aria-label="Instancia anterior">◀</button>
+            <span id="header-instance-counter" class="instance-counter-badge" title="Posición de instancia">1/1</span>
+            <span style="font-size: 11px; color: #9ca3af; font-family: 'JetBrains Mono', monospace; font-weight: bold; margin-left: 2px;">BOT:</span>
+            <select id="header-instance-selector" style="background: transparent; color: #10b981; border: none; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: bold; outline: none; cursor: pointer; max-width: 260px;">
               <option value="">Cargando bots...</option>
             </select>
+            <button id="btn-next-instance" class="btn-instance-nav" title="Siguiente instancia [Atajo: ] o Alt+Right]" aria-label="Siguiente instancia">▶</button>
           </div>
         </div>
         <div class="header-right">

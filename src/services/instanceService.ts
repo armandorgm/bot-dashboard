@@ -2,6 +2,7 @@ import { BotInstanceData, InstanceTelemetry, StrategyTriggerStatus } from '../ty
 import { getInstanceStatusColor } from '../utils/formatters';
 import { strategyManifestService } from './strategyManifestService';
 import { triggerGaugeManager } from './triggerGaugeManager';
+import { instanceNavigationManager } from './instanceNavigationManager';
 import { apiClient } from '../utils/apiClient';
 import { addLog } from './logger';
 
@@ -21,6 +22,7 @@ export class InstanceService {
 
   public setSelectedInstanceId(id: number | null): void {
     this.selectedInstanceId = id;
+    instanceNavigationManager.updateNavigationUI();
   }
 
   public findInstance(id: number | string): BotInstanceData | undefined {
@@ -621,6 +623,8 @@ export class InstanceService {
       this.renderInstanceForm(match);
       this.updateInstanceStatusToggleUI(match.status);
     }
+
+    instanceNavigationManager.updateNavigationUI();
   }
 
   public initModalListeners(_parentPort?: string, onSwitchInstance?: (id: string | number) => void): void {

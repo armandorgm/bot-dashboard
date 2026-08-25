@@ -25,10 +25,12 @@ import { MarketFeedService } from './services/marketFeedService';
 import { triggerGaugeManager } from './services/triggerGaugeManager';
 import { metricsDisplayController } from './services/metricsDisplayController';
 import { networkSettingsManager } from './services/networkSettingsManager';
+import { instanceNavigationManager } from './services/instanceNavigationManager';
 import { runTriggerGaugeVerification } from './services/triggerGaugeManager.test';
 import { runOpenOrdersManagerVerification } from './services/openOrdersManager.test';
 import { runMetricsDisplayControllerVerification } from './services/metricsDisplayController.test';
 import { runNetworkSettingsManagerVerification } from './services/networkSettingsManager.test';
+import { runInstanceNavigationManagerVerification } from './services/instanceNavigationManager.test';
 
 // ── Service Instantiations ──────────────────────────────────────────────────
 const sessionMetrics = new SessionMetricsTracker();
@@ -522,7 +524,13 @@ function switchActiveInstance(instanceId: string | number) {
 
   addLog(`[HOT-SWAP] Conmutando vista activa a la instancia: ${target.name} (${target.symbol})`, 'info');
 
+  // Si estábamos en la vista Home (Command Center), conmutar a la vista dashboard intuitivamente
+  if (globalOverviewManager.getViewMode() === 'home') {
+    globalOverviewManager.setViewMode('dashboard', () => chartRenderer.handleResize());
+  }
+
   instanceService.setSelectedInstanceId(target.id);
+  instanceNavigationManager.updateNavigationUI();
   config.instance_id = String(target.id);
   config.symbol = target.symbol;
   if (target.params && target.params.port) {
@@ -570,8 +578,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     runTriggerGaugeVerification();
     runOpenOrdersManagerVerification();
     runMetricsDisplayControllerVerification();
+    runInstanceNavigationManagerVerification();
   } catch (err) {
-    console.error('[OpenOrdersManager/TriggerGaugeManager/MetricsDisplayController] Verification error:', err);
+    console.error('[VerificationTests] Verification error:', err);
   }
   triggerGaugeManager.render();
 
@@ -886,8 +895,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   instanceService.fetchInstanceTelemetry(config.instance_id);
   instanceService.fetchInstanceTriggerStatus(config.instance_id);
 
-  // Initialize Data Source Controls, Modal Listeners and Global Overview
+  // Initialize Data Source Controls, Modal Listeners, Navigation Manager and Global Overview
   dataSourceManager.initControls();
+  instanceNavigationManager.setCallbacks({
+    getLoadedInstances: () => instanceService.getLoadedInstances(),
+    getSelectedInstanceId: () => instanceService.getSelectedInstanceId(),
+    onSwitchInstance: (id) => switchActiveInstance(id),
+  });
+  instanceNavigationManager.init();
   instanceService.initModalListeners(undefined, (id) => switchActiveInstance(id));
   globalOverviewManager.setViewMode('home', () => chartRenderer.handleResize());
 
