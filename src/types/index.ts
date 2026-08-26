@@ -97,6 +97,27 @@ export interface TacticalCluster {
   pois: TacticalPOI[];
 }
 
+export interface ProcessRangeSpan {
+  id: string;
+  processId: number;
+  pipelineId?: number;
+  side: 'BUY' | 'SELL';
+  startPrice: number;
+  endPrice: number;
+  minPrice: number;
+  maxPrice: number;
+  status: string;
+  amount: number;
+  xStart: number;
+  xEnd: number;
+  xLeft: number;
+  xRight: number;
+  widthPc: number;
+  lane: number;
+  label: string;
+  subLabel: string;
+}
+
 export interface StrategyTriggerStatus {
   instance_id: number;
   symbol: string;

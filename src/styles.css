@@ -1548,12 +1548,13 @@ body {
 
 .trigger-spectrum-track {
   position: relative;
-  height: 32px;
+  min-height: 38px;
   background: linear-gradient(90deg, rgba(16, 185, 129, 0.08) 0%, rgba(15, 23, 42, 0.8) 50%, rgba(239, 68, 68, 0.08) 100%);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   overflow: visible;
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+  transition: height 0.2s ease;
 }
 
 .trigger-center-axis {
@@ -1584,23 +1585,103 @@ body {
   z-index: 6;
 }
 
-.tactical-micro-pin,
-.tactical-cluster-pin {
+/* UNRANGED FLIP TARGET MARKER */
+.tactical-flip-target-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #f59e0b;
+  box-shadow: 0 0 12px #f59e0b;
+  z-index: 5;
   pointer-events: auto;
-  will-change: left;
-  transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
+  cursor: pointer;
 }
 
-.tactical-micro-pin > *,
-.tactical-cluster-pin > * {
+.tactical-flip-target-pill {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 3px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #000000;
+  background: #f59e0b;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.8);
+  z-index: 6;
+}
+
+/* RANGED PROCESS SPANS */
+.tactical-process-span {
+  position: absolute;
+  height: 20px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px;
+  box-sizing: border-box;
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: auto;
+  user-select: none;
+  z-index: 4;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, z-index 0.15s ease;
+}
+
+.tactical-process-span.buy {
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.35) 0%, rgba(16, 185, 129, 0.75) 100%);
+  border: 1px solid #10b981;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.35);
+}
+
+.tactical-process-span.sell {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.35) 0%, rgba(239, 68, 68, 0.75) 100%);
+  border: 1px solid #ef4444;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.35);
+}
+
+.tactical-process-span:hover {
+  transform: translateY(-2px) scale(1.02);
+  z-index: 12 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.8), 0 0 12px currentColor !important;
+}
+
+.tactical-span-content {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
 }
 
-.tactical-micro-pin:hover,
-.tactical-cluster-pin:hover {
-  transform: translate(-50%, -50%) scale(1.15) !important;
-  z-index: 10 !important;
+.tactical-span-badge {
+  font-weight: 800;
+  padding: 0 3px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.4);
+  font-size: 0.58rem;
+}
+
+.tactical-span-range {
+  font-size: 0.58rem;
+  opacity: 0.9;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .trigger-gauge-footer {

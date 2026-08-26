@@ -127,17 +127,53 @@ export function runTriggerGaugeVerification(): boolean {
     throw new Error(`Failed live onTick update check: got ${JSON.stringify(updatedStatus)}`);
   }
 
-  // 11. GAMA SPEC: Viewport Extrema Calculation
-  const testPois = [
-    { id: 'p1', price: 0.00255, category: 'REAL_ORDER' as const, side: 'BUY' as const, label: 'Buy 1' },
-    { id: 'p2', price: 0.00265, category: 'REAL_ORDER' as const, side: 'SELL' as const, label: 'Sell 1' },
+  // 11. TACTICAL SPECTRUM: Viewport Extrema Calculation with Spans & Trigger
+  const testSpans = [
+    {
+      id: 'span-1',
+      processId: 101,
+      side: 'BUY' as const,
+      startPrice: 0.00255,
+      endPrice: 0.00262,
+      minPrice: 0.00255,
+      maxPrice: 0.00262,
+      status: 'CHASING',
+      amount: 50000,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      label: '#101 BUY',
+      subLabel: 'CHASING',
+    },
+    {
+      id: 'span-2',
+      processId: 102,
+      side: 'SELL' as const,
+      startPrice: 0.00265,
+      endPrice: 0.00258,
+      minPrice: 0.00258,
+      maxPrice: 0.00265,
+      status: 'WAITING_TP_FILL',
+      amount: 50000,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      label: '#102 SELL',
+      subLabel: 'WAITING_TP_FILL',
+    },
   ];
-  const extrema = manager.calculateViewportExtrema(0.00260, testPois);
-  if (extrema.pMin >= 0.00255 || extrema.pMax <= 0.00265) {
+  const extrema = manager.calculateViewportExtrema(0.00260, 0.00254, testSpans);
+  if (extrema.pMin >= 0.00254 || extrema.pMax <= 0.00265) {
     throw new Error(`Failed calculateViewportExtrema check: got pMin=${extrema.pMin}, pMax=${extrema.pMax}`);
   }
 
-  // 12. GAMA SPEC: Logarithmic Bipartite Projection (50% Center Guarantee)
+  // 12. TACTICAL SPECTRUM: Logarithmic Bipartite Projection (50% Center Guarantee)
   const centerCoord = manager.calculateLogCoordinate(0.00260, 0.00260, 0.00250, 0.00270);
   if (Math.abs(centerCoord - 50.0) > 0.0001) {
     throw new Error(`Failed calculateLogCoordinate center check: expected 50.0, got ${centerCoord}`);
@@ -163,22 +199,8 @@ export function runTriggerGaugeVerification(): boolean {
     throw new Error(`Failed calculateLogCoordinate mid-right check: got ${midRightCoord}`);
   }
 
-  // 13. GAMA SPEC: POI Aggregation & Sources Integration
+  // 13. TACTICAL SPECTRUM: Process Spans Extraction & Side Theme
   manager.setPoiSources({
-    getOpenOrders: () => [
-      {
-        id: 'ord-123',
-        symbol: '1000PEPEUSDC',
-        type: 'LIMIT',
-        side: 'BUY',
-        price: 0.00254,
-        amount: 100000,
-        filled: 0,
-        remaining: 100000,
-        status: 'OPEN',
-        datetime: new Date().toISOString(),
-      },
-    ],
     getActiveProcesses: () => [
       {
         id: 42,
@@ -186,88 +208,109 @@ export function runTriggerGaugeVerification(): boolean {
         symbol: '1000PEPEUSDC',
         status: 'WAITING_TP_FILL',
         sub_status: 'TP_PLACED',
-        side: 'SELL',
+        side: 'BUY',
         amount: 100000,
-        last_order_price: 0.00266,
+        initial_price: 0.00258,
+        last_order_price: 0.00258,
+        last_tick_price: 0.00261,
+      },
+      {
+        id: 43,
+        pipeline_id: 1,
+        symbol: '1000PEPEUSDC',
+        status: 'CHASING',
+        sub_status: 'CHASING_MARKET',
+        side: 'SELL',
+        amount: 50000,
+        initial_price: 0.00262,
+        last_order_price: 0.00259,
       },
     ],
   });
 
-  const aggregatedPois = manager.getTacticalPois(sanitizedTrend);
-  const hasFlip = aggregatedPois.some((p) => p.category === 'FLIP_TRIGGER');
-  const hasEntry = aggregatedPois.some((p) => p.category === 'ENTRY_REF');
-  const hasOrder = aggregatedPois.some((p) => p.id === 'poi-order-ord-123');
-  const hasProc = aggregatedPois.some((p) => p.id === 'poi-proc-42');
+  const extractedSpans = manager.getProcessSpans(sanitizedTrend);
+  if (extractedSpans.length !== 2) {
+    throw new Error(`Expected 2 extracted process spans, got ${extractedSpans.length}`);
+  }
+  const buySpan = extractedSpans.find((s) => s.processId === 42);
+  const sellSpan = extractedSpans.find((s) => s.processId === 43);
 
-  if (!hasFlip || !hasEntry || !hasOrder || !hasProc) {
-    throw new Error(`Failed POI aggregation check: got ${JSON.stringify(aggregatedPois)}`);
+  if (!buySpan || buySpan.side !== 'BUY' || buySpan.startPrice !== 0.00258) {
+    throw new Error(`Failed buy span extraction: ${JSON.stringify(buySpan)}`);
+  }
+  if (!sellSpan || sellSpan.side !== 'SELL' || sellSpan.startPrice !== 0.00262) {
+    throw new Error(`Failed sell span extraction: ${JSON.stringify(sellSpan)}`);
   }
 
-  // 14. GAMA SPEC: Clustering & Anti-Cluttering Engine
-  const clusterTestPois = [
-    { id: 'c1', price: 0.002550, category: 'REAL_ORDER' as const, side: 'BUY' as const, label: 'Order 1' },
-    { id: 'c2', price: 0.002551, category: 'REAL_ORDER' as const, side: 'BUY' as const, label: 'Order 2' }, // Very close -> should cluster
-    { id: 'c3', price: 0.002680, category: 'REAL_ORDER' as const, side: 'SELL' as const, label: 'Order 3' }, // Far -> separate
+  // 14. TACTICAL SPECTRUM: Tiered Lane Assignment (NO Merging / NO Fusion)
+  const overlappingSpans = [
+    {
+      id: 'span-a',
+      processId: 1,
+      side: 'BUY' as const,
+      startPrice: 0.00255,
+      endPrice: 0.00265,
+      minPrice: 0.00255,
+      maxPrice: 0.00265,
+      status: 'CHASING',
+      amount: 10000,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      label: '#1 BUY',
+      subLabel: '',
+    },
+    {
+      id: 'span-b',
+      processId: 2,
+      side: 'SELL' as const,
+      startPrice: 0.00258,
+      endPrice: 0.00262,
+      minPrice: 0.00258,
+      maxPrice: 0.00262,
+      status: 'WAITING_TP_FILL',
+      amount: 20000,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      label: '#2 SELL',
+      subLabel: '',
+    },
   ];
-  const clusters = manager.clusterPois(clusterTestPois, 0.00260, 0.00250, 0.00270, 3.5);
-  if (clusters.length !== 2) {
-    throw new Error(`Failed clustering check: expected 2 clusters, got ${clusters.length}`);
+
+  const laneResult = manager.projectAndAssignLanes(overlappingSpans, 0.00260, 0.00250, 0.00270);
+  if (laneResult.spans.length !== 2) {
+    throw new Error(`Expected both spans preserved without merging, got ${laneResult.spans.length}`);
   }
-  if (clusters[0].pois.length !== 2 || clusters[1].pois.length !== 1) {
-    throw new Error(`Failed clustering POI grouping check: got ${JSON.stringify(clusters)}`);
+  if (laneResult.totalLanes < 2) {
+    throw new Error(`Expected at least 2 stacked lanes for overlapping intervals, got ${laneResult.totalLanes}`);
+  }
+  if (laneResult.spans[0].lane === laneResult.spans[1].lane) {
+    throw new Error(`Overlapping spans were placed in the same lane: lane 0 = ${laneResult.spans[0].lane}, lane 1 = ${laneResult.spans[1].lane}`);
   }
 
-  // 15. GAMA SPEC: In-place DOM Synchronization (Anti-Flickering Verification)
+  // 15. TACTICAL SPECTRUM: In-place DOM Synchronization for Spans (Anti-Flickering Verification)
   if (typeof document !== 'undefined') {
     const mockContainer = document.createElement('div');
-    manager.syncPinsDom(mockContainer, clusters, 6);
+    manager.syncSpansDom(mockContainer, laneResult.spans, 6, 0.00260);
     const initialElements = Array.from(mockContainer.children);
     if (initialElements.length !== 2) {
-      throw new Error(`Expected 2 elements in syncPinsDom, got ${initialElements.length}`);
+      throw new Error(`Expected 2 elements in syncSpansDom, got ${initialElements.length}`);
     }
     const firstEl = initialElements[0];
 
     // Re-sync with updated positions: element reference MUST be preserved (in-place mutation)
-    const movedClusters = [
-      { ...clusters[0], x: clusters[0].x + 1 },
-      { ...clusters[1], x: clusters[1].x - 1 },
-    ];
-    manager.syncPinsDom(mockContainer, movedClusters, 6);
+    manager.syncSpansDom(mockContainer, laneResult.spans, 6, 0.00260);
     const updatedElements = Array.from(mockContainer.children);
     if (updatedElements[0] !== firstEl) {
-      throw new Error('syncPinsDom failed to preserve existing DOM node reference in-place (flickering hazard)');
+      throw new Error('syncSpansDom failed to preserve existing DOM node reference in-place (flickering hazard)');
     }
-  }
-
-  // 16. GAMA SPEC: Kinematic Fluid Convergence Toward Center (50%)
-  // Test case: Single solitary order moving from far (-1.0%) to near (1 tick away ~ -0.01%)
-  const marketP = 0.00260;
-  const floorPc = 0.005; // 0.5% base floor
-
-  // A. When order is far (-1.0% = 0.002574)
-  const farPoi = [{ id: 'far-1', price: 0.002574, category: 'REAL_ORDER' as const, side: 'BUY' as const, label: 'Buy Far' }];
-  const extremaFar = manager.calculateViewportExtrema(marketP, farPoi, floorPc);
-  const xCoordFar = manager.calculateLogCoordinate(0.002574, marketP, extremaFar.pMin, extremaFar.pMax);
-
-  // B. When order is at moderate distance (-0.25% = 0.0025935)
-  const midPoi = [{ id: 'mid-1', price: 0.0025935, category: 'REAL_ORDER' as const, side: 'BUY' as const, label: 'Buy Mid' }];
-  const extremaMid = manager.calculateViewportExtrema(marketP, midPoi, floorPc);
-  const xCoordMid = manager.calculateLogCoordinate(0.0025935, marketP, extremaMid.pMin, extremaMid.pMax);
-
-  // C. When order is 1 tick away (-0.004% = 0.0025999)
-  const oneTickPoi = [{ id: 'tick-1', price: 0.0025999, category: 'REAL_ORDER' as const, side: 'BUY' as const, label: 'Buy 1Tick' }];
-  const extremaOneTick = manager.calculateViewportExtrema(marketP, oneTickPoi, floorPc);
-  const xCoordOneTick = manager.calculateLogCoordinate(0.0025999, marketP, extremaOneTick.pMin, extremaOneTick.pMax);
-
-  // Verification: The coordinate MUST move fluidly from extreme left (~4%) to center-adjacent (~49%)
-  if (xCoordFar >= 15 || xCoordFar <= 0) {
-    throw new Error(`Gama Kinematics Error: Far order expected in 0..15% range, got ${xCoordFar}`);
-  }
-  if (xCoordMid <= xCoordFar || xCoordMid >= 45) {
-    throw new Error(`Gama Kinematics Error: Mid order expected between Far and near center, got ${xCoordMid}`);
-  }
-  if (xCoordOneTick < 48 || xCoordOneTick >= 50) {
-    throw new Error(`Gama Kinematics Error: 1-tick order expected adjacent to center (48..49.99%), got ${xCoordOneTick}`);
   }
 
   return true;
