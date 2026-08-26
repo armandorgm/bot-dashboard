@@ -620,7 +620,6 @@
           <div class="canvas-wrapper">
             <canvas id="hft-chart"></canvas>
           </div>
-          <div id="chart-tooltip" style="position: fixed; display: none; background: rgba(10, 15, 30, 0.96); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 10px 12px; color: #e2e8f0; font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; box-shadow: 0 8px 24px rgba(0,0,0,0.6); pointer-events: none; z-index: 9999; max-width: 340px; min-width: 240px;"></div>
         </section>
 
         <!-- RECENT MODIFICATIONS -->
@@ -931,5 +930,8 @@
         </div>
       </div>
     </div>
+
+    <!-- GLOBAL HIGH-PRIORITY FLOATING TOOLTIP (Direct body child to prevent CSS containing block offsets) -->
+    <div id="chart-tooltip" style="position: fixed; display: none; background: rgba(10, 15, 30, 0.96); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 10px 12px; color: #e2e8f0; font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; box-shadow: 0 8px 24px rgba(0,0,0,0.6); pointer-events: none; z-index: 99999; max-width: 340px; min-width: 240px;"></div>
   </body>
 </html>
