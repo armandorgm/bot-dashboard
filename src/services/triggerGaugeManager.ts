@@ -216,6 +216,18 @@ export class TriggerGaugeManager {
   ): void {
     this.domRenderer.syncPinsDom(container, clusters, decimals);
   }
+
+  public getSpanTooltipHtml(span: ProcessRangeSpan, decimals: number, marketPrice: number): string {
+    return this.domRenderer.getSpanTooltipHtml(span, decimals, marketPrice);
+  }
+
+  public getFlipTargetTooltipHtml(s: StrategyTriggerStatus, decimals: number): string {
+    return this.domRenderer.getFlipTargetTooltipHtml(s, decimals);
+  }
+
+  public getSpanTooltipText(span: ProcessRangeSpan, decimals: number, marketPrice: number): string {
+    return this.domRenderer.getSpanTooltipText(span, decimals, marketPrice);
+  }
 }
 
 export const triggerGaugeManager = new TriggerGaugeManager();

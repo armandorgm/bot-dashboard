@@ -311,6 +311,22 @@ export function runTriggerGaugeVerification(): boolean {
     if (updatedElements[0] !== firstEl) {
       throw new Error('syncSpansDom failed to preserve existing DOM node reference in-place (flickering hazard)');
     }
+
+    // Verify title attribute is NOT mutated (preventing OS native tooltip dismissal)
+    if (firstEl.hasAttribute('title')) {
+      throw new Error('syncSpansDom should not set native title attribute to prevent browser tooltip flickering');
+    }
+  }
+
+  // 16. TACTICAL SPECTRUM: Rich Floating Tooltip HTML Generation
+  const spanHtml = manager.getSpanTooltipHtml(buySpan, 6, 0.00260);
+  if (!spanHtml.includes('PROCESO #42 (BUY)') || !spanHtml.includes('WAITING_TP_FILL') || !spanHtml.includes('100000')) {
+    throw new Error(`Failed getSpanTooltipHtml check: got ${spanHtml}`);
+  }
+
+  const flipHtml = manager.getFlipTargetTooltipHtml(sanitizedTrend, 6);
+  if (!flipHtml.includes('FLIP TARGET') || !flipHtml.includes('TREND_BUY') || !flipHtml.includes('0.002581')) {
+    throw new Error(`Failed getFlipTargetTooltipHtml check: got ${flipHtml}`);
   }
 
   return true;

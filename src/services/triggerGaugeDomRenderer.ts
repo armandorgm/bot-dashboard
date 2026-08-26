@@ -3,11 +3,16 @@ import { formatNum, getSymbolDecimals } from '../utils/formatters';
 import { FRAME_BUDGET_MS } from '../utils/constants';
 import { getConmutatorModeBadgeInfo, getMetricColor, getPoiVisualConfig } from './triggerGaugeTheme';
 import { calculateLogCoordinate, calculateViewportExtrema, projectAndAssignLanes } from './triggerGaugeMath';
+import { tooltipManager } from './tooltipManager';
 
 export class TriggerGaugeDomRenderer {
   private lastRenderTime: number = 0;
   private rafId: number | null = null;
   private needsRender: boolean = false;
+  private currentHoveredSpanId: string | null = null;
+  private isHoveringFlipTarget: boolean = false;
+  private currentSpans: ProcessRangeSpan[] = [];
+  private currentStatus: StrategyTriggerStatus | null = null;
 
   public requestRender(renderFn: () => void): void {
     this.needsRender = true;
@@ -49,6 +54,13 @@ export class TriggerGaugeDomRenderer {
 
     if (!s) {
       container.style.display = 'none';
+      if (this.currentHoveredSpanId || this.isHoveringFlipTarget) {
+        this.currentHoveredSpanId = null;
+        this.isHoveringFlipTarget = false;
+        tooltipManager.hide();
+      }
+      this.currentStatus = null;
+      this.currentSpans = [];
       return;
     }
 
@@ -63,6 +75,9 @@ export class TriggerGaugeDomRenderer {
     // 1. Calculate Viewport Extrema & Project Spans
     const { pMin, pMax } = calculateViewportExtrema(s.current_price, s.trigger_price, rawSpans);
     const { spans, totalLanes } = projectAndAssignLanes(rawSpans, s.current_price, pMin, pMax);
+
+    this.currentSpans = spans;
+    this.currentStatus = s;
 
     // Flip Target X-coordinate
     let xFlip: number | null = null;
@@ -153,6 +168,7 @@ export class TriggerGaugeDomRenderer {
       const trackEl = document.getElementById('tg-spectrum-track');
       if (trackEl) {
         trackEl.style.height = `${calculatedTrackHeight}px`;
+        this.attachTrackEvents(trackEl);
       }
 
       // Sync Unranged Flip Target Marker
@@ -180,6 +196,9 @@ export class TriggerGaugeDomRenderer {
         detailEl.style.color = colorTheme.color;
         detailEl.innerText = statusDetailText;
       }
+
+      // Live in-place tooltip update if cursor is currently hovering over an element
+      this.updateActiveTooltipInPlace(s, decimals);
 
       return;
     }
@@ -282,9 +301,82 @@ export class TriggerGaugeDomRenderer {
       </div>
     `;
 
+    const trackEl = document.getElementById('tg-spectrum-track');
+    if (trackEl) {
+      this.attachTrackEvents(trackEl);
+    }
+
     const spansContainerEl = document.getElementById('tg-spans-container');
     if (spansContainerEl) {
       this.syncSpansDom(spansContainerEl, spans, decimals, s.current_price);
+    }
+  }
+
+  /**
+   * Event delegation on the spectrum track to drive floating tooltips without native title flickering
+   */
+  private attachTrackEvents(trackEl: HTMLElement): void {
+    if (trackEl.getAttribute('data-events-attached') === 'true') return;
+    trackEl.setAttribute('data-events-attached', 'true');
+
+    trackEl.addEventListener('mousemove', (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      const spanEl = target.closest<HTMLElement>('.tactical-process-span');
+      const flipEl = target.closest<HTMLElement>('.tactical-flip-target-line, .tactical-flip-target-pill');
+
+      if (spanEl) {
+        const spanId = spanEl.getAttribute('data-span-id');
+        if (spanId) {
+          this.currentHoveredSpanId = spanId;
+          this.isHoveringFlipTarget = false;
+          const span = this.currentSpans.find((sp) => sp.id === spanId);
+          if (span && this.currentStatus) {
+            const decimals = getSymbolDecimals(this.currentStatus.symbol);
+            const html = this.getSpanTooltipHtml(span, decimals, this.currentStatus.current_price);
+            tooltipManager.showHtml(e.clientX, e.clientY, html);
+            return;
+          }
+        }
+      } else if (flipEl && this.currentStatus) {
+        this.currentHoveredSpanId = null;
+        this.isHoveringFlipTarget = true;
+        const decimals = getSymbolDecimals(this.currentStatus.symbol);
+        const html = this.getFlipTargetTooltipHtml(this.currentStatus, decimals);
+        tooltipManager.showHtml(e.clientX, e.clientY, html);
+        return;
+      }
+
+      if (this.currentHoveredSpanId || this.isHoveringFlipTarget) {
+        this.currentHoveredSpanId = null;
+        this.isHoveringFlipTarget = false;
+        tooltipManager.hide();
+      }
+    });
+
+    trackEl.addEventListener('mouseleave', () => {
+      if (this.currentHoveredSpanId || this.isHoveringFlipTarget) {
+        this.currentHoveredSpanId = null;
+        this.isHoveringFlipTarget = false;
+        tooltipManager.hide();
+      }
+    });
+  }
+
+  /**
+   * Smooth in-place tooltip content updater during high-frequency price ticks
+   */
+  private updateActiveTooltipInPlace(s: StrategyTriggerStatus, decimals: number): void {
+    if (this.currentHoveredSpanId) {
+      const span = this.currentSpans.find((sp) => sp.id === this.currentHoveredSpanId);
+      if (span && tooltipManager.isVisible()) {
+        const html = this.getSpanTooltipHtml(span, decimals, s.current_price);
+        tooltipManager.updateHtml(html);
+      }
+    } else if (this.isHoveringFlipTarget && tooltipManager.isVisible()) {
+      const html = this.getFlipTargetTooltipHtml(s, decimals);
+      tooltipManager.updateHtml(html);
     }
   }
 
@@ -295,7 +387,7 @@ export class TriggerGaugeDomRenderer {
     container: HTMLElement,
     spans: ProcessRangeSpan[],
     decimals: number,
-    marketPrice: number
+    _marketPrice: number
   ): void {
     const existingElements = new Map<string, HTMLElement>();
 
@@ -310,19 +402,14 @@ export class TriggerGaugeDomRenderer {
       activeIds.add(span.id);
       const existingEl = existingElements.get(span.id);
       const topPx = 6 + span.lane * 24;
-      const tooltipText = this.getSpanTooltipText(span, decimals, marketPrice);
 
       if (existingEl) {
         existingEl.style.left = `${span.xLeft}%`;
         existingEl.style.width = `${span.widthPc}%`;
         existingEl.style.top = `${topPx}px`;
-        if (existingEl.title !== tooltipText) {
-          existingEl.title = tooltipText;
-        }
       } else {
         const newEl = document.createElement('div');
         newEl.setAttribute('data-span-id', span.id);
-        newEl.title = tooltipText;
         newEl.className = `tactical-process-span ${span.side.toLowerCase()}`;
         newEl.style.left = `${span.xLeft}%`;
         newEl.style.width = `${span.widthPc}%`;
@@ -387,6 +474,72 @@ export class TriggerGaugeDomRenderer {
         el.remove();
       }
     });
+  }
+
+  public getSpanTooltipHtml(span: ProcessRangeSpan, decimals: number, marketPrice: number): string {
+    const startDistPc = (((span.startPrice - marketPrice) / marketPrice) * 100).toFixed(2);
+    const endDistPc = (((span.endPrice - marketPrice) / marketPrice) * 100).toFixed(2);
+    const isBuy = span.side === 'BUY';
+    const sideColor = isBuy ? '#10b981' : '#ef4444';
+    const sideBg = isBuy ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+    const sideBorder = isBuy ? '#10b981' : '#ef4444';
+
+    return `
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.4;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 4px; margin-bottom: 6px;">
+          <span style="font-weight: 800; color: ${sideColor};">PROCESO #${span.processId} (${span.side})</span>
+          <span style="background: ${sideBg}; color: ${sideColor}; border: 1px solid ${sideBorder}; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: bold;">${span.status}</span>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; font-size: 10px; color: #cbd5e1;">
+          <tr>
+            <td style="color: #64748b; padding-right: 6px; width: 65px;">Inicio:</td>
+            <td style="color: #38bdf8; font-weight: 600;">$${formatNum(span.startPrice, decimals)} <span style="color: #94a3b8; font-weight: normal;">(${startDistPc}% vs Market)</span></td>
+          </tr>
+          <tr>
+            <td style="color: #64748b; padding-right: 6px; width: 65px;">Destino (TP):</td>
+            <td style="color: ${sideColor}; font-weight: 600;">$${formatNum(span.endPrice, decimals)} <span style="color: #94a3b8; font-weight: normal;">(${endDistPc}% vs Market)</span></td>
+          </tr>
+          <tr>
+            <td style="color: #64748b; padding-right: 6px; width: 65px;">Cantidad:</td>
+            <td style="color: #f1f5f9; font-weight: 600;">${span.amount}</td>
+          </tr>
+        </table>
+      </div>
+    `;
+  }
+
+  public getFlipTargetTooltipHtml(s: StrategyTriggerStatus, decimals: number): string {
+    const reqSign = s.required_metric_pc > 0 ? '+' : '';
+    const currSign = s.current_metric_pc > 0 ? '+' : '';
+    const isFlip = s.state === 'FLIP_CONMUTATED';
+    const targetStr = s.trigger_price !== null ? `$${formatNum(s.trigger_price, decimals)}` : '--';
+
+    return `
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.4;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 4px; margin-bottom: 6px;">
+          <span style="font-weight: 800; color: #f59e0b;">⚡ FLIP TARGET (Conmutador)</span>
+          <span style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid #f59e0b; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: bold;">${s.conmutator_mode || s.state}</span>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; font-size: 10px; color: #cbd5e1;">
+          <tr>
+            <td style="color: #64748b; padding-right: 6px; width: 85px;">Target Price:</td>
+            <td style="color: #f59e0b; font-weight: 700;">${targetStr}</td>
+          </tr>
+          <tr>
+            <td style="color: #64748b; padding-right: 6px; width: 85px;">Retroceso Actual:</td>
+            <td style="color: #38bdf8; font-weight: 600;">${currSign}${s.current_metric_pc.toFixed(4)}% <span style="color: #94a3b8; font-weight: normal;">(Umbral: ${reqSign}${s.required_metric_pc.toFixed(4)}%)</span></td>
+          </tr>
+          <tr>
+            <td style="color: #64748b; padding-right: 6px; width: 85px;">Distancia al Giro:</td>
+            <td style="color: ${isFlip ? '#10b981' : '#38bdf8'}; font-weight: 700;">${isFlip ? '0.0000% (Conmutado)' : `+${s.delta_remaining_pc.toFixed(4)}%`}</td>
+          </tr>
+          <tr>
+            <td style="color: #64748b; padding-right: 6px; width: 85px;">Giro Hacia:</td>
+            <td style="color: #10b981; font-weight: 700;">${s.resolved_side}</td>
+          </tr>
+        </table>
+      </div>
+    `;
   }
 
   public getSpanTooltipText(span: ProcessRangeSpan, decimals: number, marketPrice: number): string {

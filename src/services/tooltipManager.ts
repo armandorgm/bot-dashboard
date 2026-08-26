@@ -24,10 +24,48 @@ export class TooltipManager {
     return { x: this.mouseX, y: this.mouseY };
   }
 
+  public isVisible(): boolean {
+    return !!this.tooltipEl && this.tooltipEl.style.display !== 'none';
+  }
+
   public hide(): void {
     if (this.tooltipEl) {
       this.tooltipEl.style.display = 'none';
     }
+  }
+
+  public showHtml(clientX: number, clientY: number, htmlContent: string): void {
+    if (!this.tooltipEl) {
+      this.tooltipEl = document.getElementById('chart-tooltip');
+      if (!this.tooltipEl) return;
+    }
+
+    this.tooltipEl.innerHTML = htmlContent;
+    this.tooltipEl.style.display = 'block';
+
+    const tooltipWidth = this.tooltipEl.offsetWidth || 260;
+    const tooltipHeight = this.tooltipEl.offsetHeight || 120;
+
+    let leftPos = clientX + 15;
+    let topPos = clientY + 15;
+
+    if (clientX + tooltipWidth + 15 > window.innerWidth) {
+      leftPos = clientX - tooltipWidth - 15;
+    }
+    if (clientY + tooltipHeight + 15 > window.innerHeight) {
+      topPos = clientY - tooltipHeight - 15;
+    }
+
+    if (leftPos < 10) leftPos = 10;
+    if (topPos < 10) topPos = 10;
+
+    this.tooltipEl.style.left = `${leftPos}px`;
+    this.tooltipEl.style.top = `${topPos}px`;
+  }
+
+  public updateHtml(htmlContent: string): void {
+    if (!this.tooltipEl || this.tooltipEl.style.display === 'none') return;
+    this.tooltipEl.innerHTML = htmlContent;
   }
 
   public update(
