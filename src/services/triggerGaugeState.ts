@@ -208,30 +208,9 @@ export function extractProcessSpans(
       )
       .forEach((p) => {
         const side: 'BUY' | 'SELL' = (p.side || 'BUY').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
-        let startPrice =
-          p.initial_price && p.initial_price > 0
-            ? p.initial_price
-            : p.last_order_price || s.current_price;
-        let endPrice =
-          p.last_order_price && p.last_order_price > 0
-            ? p.last_order_price
-            : p.last_tick_price || startPrice;
-
-        const isTpPhase = p.status === 'WAITING_TP_FILL' || p.status === 'PLACING_TP';
-        if (isTpPhase) {
-          startPrice = p.last_order_price || p.initial_price || s.current_price;
-          const profitMultiplier =
-            side === 'BUY'
-              ? 1 + (s.required_metric_pc ? s.required_metric_pc / 100 : 0.005)
-              : 1 - (s.required_metric_pc ? s.required_metric_pc / 100 : 0.005);
-          endPrice =
-            p.last_tick_price && p.last_tick_price !== startPrice
-              ? p.last_tick_price
-              : startPrice * profitMultiplier;
-        } else if (startPrice === endPrice) {
-          const offset = side === 'BUY' ? 1.0025 : 0.9975;
-          endPrice = startPrice * offset;
-        }
+        const startPrice = Number(p.start_price || p.initial_price || p.last_order_price || s.current_price || 0);
+        const targetPrice = Number(p.target_price || p.pre_exit_price || p.chase_target_price || 0);
+        const endPrice = targetPrice > 0 ? targetPrice : Number(p.last_order_price || p.last_tick_price || startPrice);
 
         if (startPrice > 0 && endPrice > 0) {
           const minPrice = Math.min(startPrice, endPrice);

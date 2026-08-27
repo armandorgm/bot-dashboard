@@ -476,9 +476,7 @@ export class TriggerGaugeDomRenderer {
     });
   }
 
-  public getSpanTooltipHtml(span: ProcessRangeSpan, decimals: number, marketPrice: number): string {
-    const startDistPc = (((span.startPrice - marketPrice) / marketPrice) * 100).toFixed(2);
-    const endDistPc = (((span.endPrice - marketPrice) / marketPrice) * 100).toFixed(2);
+  public getSpanTooltipHtml(span: ProcessRangeSpan, decimals: number, _marketPrice?: number): string {
     const isBuy = span.side === 'BUY';
     const sideColor = isBuy ? '#10b981' : '#ef4444';
     const sideBg = isBuy ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)';
@@ -493,11 +491,11 @@ export class TriggerGaugeDomRenderer {
         <table style="width: 100%; border-collapse: collapse; font-size: 10px; color: #cbd5e1;">
           <tr>
             <td style="color: #64748b; padding-right: 6px; width: 65px;">Inicio:</td>
-            <td style="color: #38bdf8; font-weight: 600;">$${formatNum(span.startPrice, decimals)} <span style="color: #94a3b8; font-weight: normal;">(${startDistPc}% vs Market)</span></td>
+            <td style="color: #38bdf8; font-weight: 600;">$${formatNum(span.startPrice, decimals)}</td>
           </tr>
           <tr>
             <td style="color: #64748b; padding-right: 6px; width: 65px;">Destino (TP):</td>
-            <td style="color: ${sideColor}; font-weight: 600;">$${formatNum(span.endPrice, decimals)} <span style="color: #94a3b8; font-weight: normal;">(${endDistPc}% vs Market)</span></td>
+            <td style="color: ${sideColor}; font-weight: 600;">$${formatNum(span.endPrice, decimals)}</td>
           </tr>
           <tr>
             <td style="color: #64748b; padding-right: 6px; width: 65px;">Cantidad:</td>
@@ -542,9 +540,7 @@ export class TriggerGaugeDomRenderer {
     `;
   }
 
-  public getSpanTooltipText(span: ProcessRangeSpan, decimals: number, marketPrice: number): string {
-    const startDistPc = (((span.startPrice - marketPrice) / marketPrice) * 100).toFixed(2);
-    const endDistPc = (((span.endPrice - marketPrice) / marketPrice) * 100).toFixed(2);
-    return `Proceso #${span.processId} (${span.side})\nEstado: ${span.status}\nInicio: $${formatNum(span.startPrice, decimals)} (${startDistPc}% vs Market)\nDestino: $${formatNum(span.endPrice, decimals)} (${endDistPc}% vs Market)\nCantidad: ${span.amount}`;
+  public getSpanTooltipText(span: ProcessRangeSpan, decimals: number, _marketPrice?: number): string {
+    return `Proceso #${span.processId} (${span.side})\nEstado: ${span.status}\nInicio: $${formatNum(span.startPrice, decimals)}\nDestino: $${formatNum(span.endPrice, decimals)}\nCantidad: ${span.amount}`;
   }
 }

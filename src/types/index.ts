@@ -36,9 +36,14 @@ export interface ChasePipelineProcess {
   symbol: string;
   entry_order_id?: string;
   exit_order_id?: string;
-  status: 'CHASING' | 'WAITING_FILL' | 'PLACING_TP' | 'COMPLETED' | 'ABORTED' | string;
+  active_order_id?: string;
+  status: 'CHASING' | 'WAITING_ENTRY_FILL' | 'WAITING_EXIT_FILL' | 'VIRTUAL_WATCHING' | 'WAITING_FILL' | 'WAITING_TP_FILL' | 'PLACING_TP' | 'INIT' | 'COMPLETED' | 'ABORTED' | string;
   sub_status: string;
   initial_price?: number;
+  start_price?: number;
+  target_price?: number;
+  pre_exit_price?: number;
+  chase_target_price?: number;
   last_tick_price?: number;
   last_order_price?: number;
   side: string;
