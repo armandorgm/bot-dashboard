@@ -61,7 +61,7 @@ export class TriggerGaugeManager {
       if (ctx.instanceId > 0 && ctx.latestPrice > 0) {
         return this.getSanitizedStatus({
           instance_id: ctx.instanceId,
-          symbol: ctx.symbol || '1000PEPEUSDC',
+          symbol: ctx.symbol || '--',
           strategy: 'GRID_POSITION_FLIPPER',
           state: 'TREND_ACCUMULATION',
           conmutator_mode: 'TREND_BUY',
@@ -82,6 +82,12 @@ export class TriggerGaugeManager {
 
   public getStatusForInstance(instanceId: number): StrategyTriggerStatus | undefined {
     return this.instanceStatusMap.get(instanceId);
+  }
+
+  public setActiveInstance(instanceId: number): void {
+    const cached = this.instanceStatusMap.get(instanceId);
+    this.currentStatus = cached || null;
+    this.render();
   }
 
   public setStatus(status: StrategyTriggerStatus | null): void {

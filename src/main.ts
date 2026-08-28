@@ -69,15 +69,21 @@ if (qPort) {
 if (qId) config.instance_id = qId;
 if (qSym) config.symbol = qSym;
 
+// Wire Trigger Gauge Context Getter & Tactical POI Sources
 triggerGaugeManager.setContextGetter(() => {
   const currentSelected = instanceService.getSelectedInstanceId();
-  const instId = currentSelected !== null ? currentSelected : parseInt(config.instance_id || '8', 10);
+  const targetInstId = currentSelected !== null ? currentSelected : parseInt(config.instance_id || '1', 10);
   const latestPrice = history.length > 0 ? (history[history.length - 1].bid || history[history.length - 1].ask) : 0;
   return {
-    symbol: config.symbol !== '--' ? config.symbol : '1000PEPEUSDC',
-    instanceId: isNaN(instId) ? 8 : instId,
-    latestPrice: latestPrice > 0 ? latestPrice : 0.002575,
+    symbol: config.symbol !== '--' ? config.symbol : '',
+    instanceId: isNaN(targetInstId) ? 1 : targetInstId,
+    latestPrice: latestPrice,
   };
+});
+
+triggerGaugeManager.setPoiSources({
+  getOpenOrders: () => openOrdersManager.getOrders(),
+  getActiveProcesses: () => activeChaseProcesses,
 });
 
 // Chart Renderer Engine
@@ -95,23 +101,6 @@ const chartRenderer = new ChartRenderer({
   getTriggerStatus: () => triggerGaugeManager.getStatus(),
   getMaxPoints: () => maxPoints,
   getHz: () => marketFeed.getHz(),
-});
-
-// Wire Trigger Gauge Context Getter & Tactical POI Sources
-triggerGaugeManager.setContextGetter(() => {
-  const currentSelected = instanceService.getSelectedInstanceId();
-  const targetInstId = currentSelected !== null ? currentSelected : parseInt(config.instance_id || '1', 10);
-  const latestPrice = history.length > 0 ? history[history.length - 1].bid : 0;
-  return {
-    symbol: config.symbol,
-    instanceId: targetInstId,
-    latestPrice: latestPrice,
-  };
-});
-
-triggerGaugeManager.setPoiSources({
-  getOpenOrders: () => openOrdersManager.getOrders(),
-  getActiveProcesses: () => activeChaseProcesses,
 });
 
 // Market Feed Service Coordinator
@@ -562,9 +551,9 @@ function switchActiveInstance(instanceId: string | number) {
 
   openOrdersManager.fetchOpenOrders(config.parent_api_port, target.symbol);
   fetchActivePipelines();
+  triggerGaugeManager.setActiveInstance(target.id);
   instanceService.fetchInstanceTelemetry(target.id, config.parent_api_port);
   instanceService.fetchInstanceTriggerStatus(target.id, config.parent_api_port);
-  triggerGaugeManager.render();
 }
 
 

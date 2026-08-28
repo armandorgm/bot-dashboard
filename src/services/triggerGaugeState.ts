@@ -25,11 +25,9 @@ export function sanitizeTriggerStatus(
   raw: Partial<StrategyTriggerStatus>,
   contextGetter?: ContextGetter
 ): StrategyTriggerStatus {
-  const ctx = contextGetter
-    ? contextGetter()
-    : { symbol: '1000PEPEUSDC', instanceId: 8, latestPrice: 0.002575 };
-  const symbol = raw.symbol || ctx.symbol || '1000PEPEUSDC';
-  const instanceId = raw.instance_id || ctx.instanceId || 8;
+  const ctx = contextGetter ? contextGetter() : undefined;
+  const symbol = raw.symbol || ctx?.symbol || '--';
+  const instanceId = raw.instance_id || ctx?.instanceId || 1;
   const strategy = raw.strategy || 'GRID_POSITION_FLIPPER';
 
   const reqMetric =
@@ -55,16 +53,19 @@ export function sanitizeTriggerStatus(
   const currentPrice =
     raw.current_price && raw.current_price > 0
       ? raw.current_price
-      : ctx.latestPrice > 0
+      : ctx && ctx.latestPrice > 0
       ? ctx.latestPrice
-      : 0.002575;
+      : 0;
   const entryPrice =
     raw.entry_price && raw.entry_price > 0 ? raw.entry_price : currentPrice;
 
   let triggerPrice = raw.trigger_price;
-  if (!triggerPrice || triggerPrice <= 0) {
+  if ((!triggerPrice || triggerPrice <= 0) && entryPrice > 0) {
     const dir = posSide === 'LONG' ? -1 : 1;
     triggerPrice = entryPrice * (1 + dir * (reqMetric / 100));
+  }
+  if (!triggerPrice || triggerPrice <= 0) {
+    triggerPrice = entryPrice;
   }
 
   // Normalize raw states to v2.2.0 TriggerState
