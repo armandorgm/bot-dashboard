@@ -123,6 +123,32 @@ export interface ProcessRangeSpan {
   subLabel: string;
 }
 
+export interface TacticalProcessGap {
+  id: string;
+  leftProcessId: number;
+  rightProcessId: number;
+  leftSpanId: string;
+  rightSpanId: string;
+  leftSpan: ProcessRangeSpan;
+  rightSpan: ProcessRangeSpan;
+  leftEdgePrice: number;
+  rightEdgePrice: number;
+  priceGap: number;
+  leftMidPrice: number;
+  rightMidPrice: number;
+  leftDistToCenter: number;
+  rightDistToCenter: number;
+  referenceSide: 'LEFT' | 'RIGHT';
+  referenceProcessId: number;
+  referencePrice: number;
+  gapPercent: number;
+  isOverlap: boolean;
+  xLeft: number;
+  xRight: number;
+  xCenter: number;
+  widthPc: number;
+}
+
 export interface StrategyTriggerStatus {
   instance_id: number;
   symbol: string;

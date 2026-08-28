@@ -1,8 +1,8 @@
-import { ProcessRangeSpan, StrategyTriggerStatus, TacticalCluster } from '../types';
+import { ProcessRangeSpan, StrategyTriggerStatus, TacticalCluster, TacticalProcessGap } from '../types';
 import { formatNum, getSymbolDecimals } from '../utils/formatters';
 import { FRAME_BUDGET_MS } from '../utils/constants';
 import { getConmutatorModeBadgeInfo, getMetricColor, getPoiVisualConfig } from './triggerGaugeTheme';
-import { calculateLogCoordinate, calculateViewportExtrema, projectAndAssignLanes } from './triggerGaugeMath';
+import { calculateLogCoordinate, calculateProcessGaps, calculateViewportExtrema, projectAndAssignLanes } from './triggerGaugeMath';
 import { tooltipManager } from './tooltipManager';
 
 export class TriggerGaugeDomRenderer {
@@ -10,8 +10,10 @@ export class TriggerGaugeDomRenderer {
   private rafId: number | null = null;
   private needsRender: boolean = false;
   private currentHoveredSpanId: string | null = null;
+  private currentHoveredGapId: string | null = null;
   private isHoveringFlipTarget: boolean = false;
   private currentSpans: ProcessRangeSpan[] = [];
+  private currentGaps: TacticalProcessGap[] = [];
   private currentStatus: StrategyTriggerStatus | null = null;
 
   public requestRender(renderFn: () => void): void {
@@ -75,8 +77,10 @@ export class TriggerGaugeDomRenderer {
     // 1. Calculate Viewport Extrema & Project Spans
     const { pMin, pMax } = calculateViewportExtrema(s.current_price, s.trigger_price, rawSpans);
     const { spans, totalLanes } = projectAndAssignLanes(rawSpans, s.current_price, pMin, pMax);
+    const gaps = calculateProcessGaps(spans, s.current_price, pMin, pMax);
 
     this.currentSpans = spans;
+    this.currentGaps = gaps;
     this.currentStatus = s;
 
     // Flip Target X-coordinate
@@ -186,6 +190,11 @@ export class TriggerGaugeDomRenderer {
         }
       }
 
+      const gapsContainerEl = document.getElementById('tg-gaps-container');
+      if (gapsContainerEl) {
+        this.syncGapsDom(gapsContainerEl, gaps, decimals, s.current_price);
+      }
+
       const spansContainerEl = document.getElementById('tg-spans-container');
       if (spansContainerEl) {
         this.syncSpansDom(spansContainerEl, spans, decimals, s.current_price);
@@ -288,6 +297,9 @@ export class TriggerGaugeDomRenderer {
               </div>
             </div>
 
+            <!-- Inter-Process Distance Gaps Container -->
+            <div id="tg-gaps-container" style="position: absolute; inset: 0; pointer-events: auto;"></div>
+
             <!-- Dynamic Tactical Process Spans Container -->
             <div id="tg-spans-container" style="position: absolute; inset: 0; pointer-events: auto;"></div>
           </div>
@@ -304,6 +316,11 @@ export class TriggerGaugeDomRenderer {
     const trackEl = document.getElementById('tg-spectrum-track');
     if (trackEl) {
       this.attachTrackEvents(trackEl);
+    }
+
+    const gapsContainerEl = document.getElementById('tg-gaps-container');
+    if (gapsContainerEl) {
+      this.syncGapsDom(gapsContainerEl, gaps, decimals, s.current_price);
     }
 
     const spansContainerEl = document.getElementById('tg-spans-container');
@@ -324,12 +341,14 @@ export class TriggerGaugeDomRenderer {
       if (!target) return;
 
       const spanEl = target.closest<HTMLElement>('.tactical-process-span');
+      const gapEl = target.closest<HTMLElement>('.tactical-process-gap');
       const flipEl = target.closest<HTMLElement>('.tactical-flip-target-line, .tactical-flip-target-pill');
 
       if (spanEl) {
         const spanId = spanEl.getAttribute('data-span-id');
         if (spanId) {
           this.currentHoveredSpanId = spanId;
+          this.currentHoveredGapId = null;
           this.isHoveringFlipTarget = false;
           const span = this.currentSpans.find((sp) => sp.id === spanId);
           if (span && this.currentStatus) {
@@ -339,8 +358,23 @@ export class TriggerGaugeDomRenderer {
             return;
           }
         }
+      } else if (gapEl) {
+        const gapId = gapEl.getAttribute('data-gap-id');
+        if (gapId) {
+          this.currentHoveredGapId = gapId;
+          this.currentHoveredSpanId = null;
+          this.isHoveringFlipTarget = false;
+          const gap = this.currentGaps.find((g) => g.id === gapId);
+          if (gap && this.currentStatus) {
+            const decimals = getSymbolDecimals(this.currentStatus.symbol);
+            const html = this.getGapTooltipHtml(gap, decimals, this.currentStatus.current_price);
+            tooltipManager.showHtml(e.clientX, e.clientY, html);
+            return;
+          }
+        }
       } else if (flipEl && this.currentStatus) {
         this.currentHoveredSpanId = null;
+        this.currentHoveredGapId = null;
         this.isHoveringFlipTarget = true;
         const decimals = getSymbolDecimals(this.currentStatus.symbol);
         const html = this.getFlipTargetTooltipHtml(this.currentStatus, decimals);
@@ -348,16 +382,18 @@ export class TriggerGaugeDomRenderer {
         return;
       }
 
-      if (this.currentHoveredSpanId || this.isHoveringFlipTarget) {
+      if (this.currentHoveredSpanId || this.currentHoveredGapId || this.isHoveringFlipTarget) {
         this.currentHoveredSpanId = null;
+        this.currentHoveredGapId = null;
         this.isHoveringFlipTarget = false;
         tooltipManager.hide();
       }
     });
 
     trackEl.addEventListener('mouseleave', () => {
-      if (this.currentHoveredSpanId || this.isHoveringFlipTarget) {
+      if (this.currentHoveredSpanId || this.currentHoveredGapId || this.isHoveringFlipTarget) {
         this.currentHoveredSpanId = null;
+        this.currentHoveredGapId = null;
         this.isHoveringFlipTarget = false;
         tooltipManager.hide();
       }
@@ -374,10 +410,70 @@ export class TriggerGaugeDomRenderer {
         const html = this.getSpanTooltipHtml(span, decimals, s.current_price);
         tooltipManager.updateHtml(html);
       }
+    } else if (this.currentHoveredGapId) {
+      const gap = this.currentGaps.find((g) => g.id === this.currentHoveredGapId);
+      if (gap && tooltipManager.isVisible()) {
+        const html = this.getGapTooltipHtml(gap, decimals, s.current_price);
+        tooltipManager.updateHtml(html);
+      }
     } else if (this.isHoveringFlipTarget && tooltipManager.isVisible()) {
       const html = this.getFlipTargetTooltipHtml(s, decimals);
       tooltipManager.updateHtml(html);
     }
+  }
+
+  /**
+   * High-performance in-place DOM synchronization for Process Gaps (Distance % between adjacent processes).
+   */
+  public syncGapsDom(
+    container: HTMLElement,
+    gaps: TacticalProcessGap[],
+    _decimals?: number,
+    _marketPrice?: number
+  ): void {
+    const existingElements = new Map<string, HTMLElement>();
+
+    container.querySelectorAll<HTMLElement>('[data-gap-id]').forEach((el) => {
+      const id = el.getAttribute('data-gap-id');
+      if (id) existingElements.set(id, el);
+    });
+
+    const activeIds = new Set<string>();
+
+    gaps.forEach((gap) => {
+      activeIds.add(gap.id);
+      const existingEl = existingElements.get(gap.id);
+      const isOverlap = gap.isOverlap;
+      const formattedPc = `${gap.gapPercent >= 0 ? '+' : ''}${gap.gapPercent.toFixed(2)}%`;
+      const badgeText = isOverlap ? `⚡ Solape ${formattedPc}` : `↔ ${Math.abs(gap.gapPercent).toFixed(2)}%`;
+      const isCompact = gap.widthPc < 2.8;
+
+      if (existingEl) {
+        existingEl.style.left = `${gap.xCenter}%`;
+        existingEl.className = `tactical-process-gap ${isOverlap ? 'overlap' : 'spaced'} ${isCompact ? 'compact' : ''}`;
+        const pillEl = existingEl.querySelector<HTMLElement>('.tactical-gap-val');
+        if (pillEl) {
+          pillEl.innerText = badgeText;
+        }
+      } else {
+        const newEl = document.createElement('div');
+        newEl.setAttribute('data-gap-id', gap.id);
+        newEl.className = `tactical-process-gap ${isOverlap ? 'overlap' : 'spaced'} ${isCompact ? 'compact' : ''}`;
+        newEl.style.left = `${gap.xCenter}%`;
+        newEl.innerHTML = `
+          <div class="tactical-gap-pill ${isOverlap ? 'overlap' : 'spaced'}">
+            <span class="tactical-gap-val">${badgeText}</span>
+          </div>
+        `;
+        container.appendChild(newEl);
+      }
+    });
+
+    existingElements.forEach((el, id) => {
+      if (!activeIds.has(id)) {
+        el.remove();
+      }
+    });
   }
 
   /**
@@ -543,4 +639,58 @@ export class TriggerGaugeDomRenderer {
   public getSpanTooltipText(span: ProcessRangeSpan, decimals: number, _marketPrice?: number): string {
     return `Proceso #${span.processId} (${span.side})\nEstado: ${span.status}\nInicio: $${formatNum(span.startPrice, decimals)}\nDestino: $${formatNum(span.endPrice, decimals)}\nCantidad: ${span.amount}`;
   }
+
+  public getGapTooltipHtml(gap: TacticalProcessGap, decimals: number, marketPrice?: number): string {
+    const isOverlap = gap.isOverlap;
+    const themeColor = isOverlap ? '#f59e0b' : '#38bdf8';
+    const themeBg = isOverlap ? 'rgba(245, 158, 11, 0.2)' : 'rgba(56, 189, 248, 0.2)';
+    const themeBorder = isOverlap ? '#f59e0b' : '#38bdf8';
+    const statusLabel = isOverlap ? 'SOLAPAMIENTO' : 'ESPACIO LIBRE';
+    const sign = gap.gapPercent >= 0 ? '+' : '';
+
+    return `
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.4;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 4px; margin-bottom: 6px;">
+          <span style="font-weight: 800; color: ${themeColor};">DISTANCIA: #${gap.leftProcessId} ➔ #${gap.rightProcessId}</span>
+          <span style="background: ${themeBg}; color: ${themeColor}; border: 1px solid ${themeBorder}; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: bold;">${statusLabel}</span>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; font-size: 10px; color: #cbd5e1;">
+          <tr>
+            <td style="color: #64748b; padding-right: 6px; width: 110px;">Borde Izquierdo:</td>
+            <td style="color: #cbd5e1; font-weight: 600;">$${formatNum(gap.leftEdgePrice, decimals)} <span style="color: #64748b;">(#${gap.leftProcessId})</span></td>
+          </tr>
+          <tr>
+            <td style="color: #64748b; padding-right: 6px; width: 110px;">Borde Derecho:</td>
+            <td style="color: #cbd5e1; font-weight: 600;">$${formatNum(gap.rightEdgePrice, decimals)} <span style="color: #64748b;">(#${gap.rightProcessId})</span></td>
+          </tr>
+          <tr>
+            <td style="color: #64748b; padding-right: 6px; width: 110px;">Brecha Precio (ΔP):</td>
+            <td style="color: ${themeColor}; font-weight: 700;">${sign}$${formatNum(gap.priceGap, decimals)}</td>
+          </tr>
+          <tr>
+            <td style="color: #64748b; padding-right: 6px; width: 110px;">Proceso Referencia:</td>
+            <td style="color: #a78bfa; font-weight: 700;">#${gap.referenceProcessId} <span style="color: #94a3b8; font-weight: normal;">(más cercano al centro)</span></td>
+          </tr>
+          <tr>
+            <td style="color: #64748b; padding-right: 6px; width: 110px;">Base Divisora (Ref):</td>
+            <td style="color: #f1f5f9; font-weight: 600;">$${formatNum(gap.referencePrice, decimals)}</td>
+          </tr>
+          <tr>
+            <td style="color: #64748b; padding-right: 6px; width: 110px;">Distancia Porcentual:</td>
+            <td style="color: ${themeColor}; font-weight: 800; font-size: 11px;">${sign}${gap.gapPercent.toFixed(4)}%</td>
+          </tr>
+          ${
+            marketPrice && marketPrice > 0
+              ? `
+          <tr>
+            <td style="color: #64748b; padding-right: 6px; width: 110px;">Distancia a Centro:</td>
+            <td style="color: #94a3b8; font-size: 9.5px;">#${gap.leftProcessId}: $${formatNum(gap.leftDistToCenter, decimals)} | #${gap.rightProcessId}: $${formatNum(gap.rightDistToCenter, decimals)}</td>
+          </tr>`
+              : ''
+          }
+        </table>
+      </div>
+    `;
+  }
 }
+

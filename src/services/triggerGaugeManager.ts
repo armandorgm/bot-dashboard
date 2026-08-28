@@ -4,10 +4,12 @@ import {
   StrategyTriggerStatus,
   TacticalCluster,
   TacticalPOI,
+  TacticalProcessGap,
   TriggerState,
 } from '../types';
 import {
   calculateLogCoordinate,
+  calculateProcessGaps,
   calculateViewportExtrema,
   clusterPois,
   projectAndAssignLanes,
@@ -229,6 +231,28 @@ export class TriggerGaugeManager {
 
   public getFlipTargetTooltipHtml(s: StrategyTriggerStatus, decimals: number): string {
     return this.domRenderer.getFlipTargetTooltipHtml(s, decimals);
+  }
+
+  public calculateProcessGaps(
+    spans: ProcessRangeSpan[],
+    marketPrice: number,
+    pMin: number,
+    pMax: number
+  ): TacticalProcessGap[] {
+    return calculateProcessGaps(spans, marketPrice, pMin, pMax);
+  }
+
+  public syncGapsDom(
+    container: HTMLElement,
+    gaps: TacticalProcessGap[],
+    decimals: number,
+    marketPrice: number
+  ): void {
+    this.domRenderer.syncGapsDom(container, gaps, decimals, marketPrice);
+  }
+
+  public getGapTooltipHtml(gap: TacticalProcessGap, decimals: number, marketPrice?: number): string {
+    return this.domRenderer.getGapTooltipHtml(gap, decimals, marketPrice);
   }
 
   public getSpanTooltipText(span: ProcessRangeSpan, decimals: number, marketPrice: number): string {

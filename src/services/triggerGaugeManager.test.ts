@@ -329,6 +329,227 @@ export function runTriggerGaugeVerification(): boolean {
     throw new Error(`Failed getFlipTargetTooltipHtml check: got ${flipHtml}`);
   }
 
+  // 17. TACTICAL PROCESS GAPS: Pure Mathematical Edge-to-Edge Distance Calculation (Left as Reference)
+  const leftRefSpans = [
+    {
+      id: 'span-left-1',
+      processId: 10,
+      side: 'SELL' as const,
+      startPrice: 715,
+      endPrice: 720,
+      minPrice: 715,
+      maxPrice: 720,
+      status: 'WAITING_TP_FILL',
+      amount: 1,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      label: '#10 SELL',
+      subLabel: '',
+    },
+    {
+      id: 'span-left-2',
+      processId: 11,
+      side: 'SELL' as const,
+      startPrice: 725,
+      endPrice: 730,
+      minPrice: 725,
+      maxPrice: 730,
+      status: 'CHASING',
+      amount: 1,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      label: '#11 SELL',
+      subLabel: '',
+    },
+  ];
+
+  // Market price at 710 -> Process #10 (mid 717.5, dist 7.5) is closer to market than #11 (mid 727.5, dist 17.5)
+  const gapsLeftRef = manager.calculateProcessGaps(leftRefSpans, 710, 700, 750);
+  if (gapsLeftRef.length !== 1) {
+    throw new Error(`Expected 1 gap, got ${gapsLeftRef.length}`);
+  }
+  const gap1 = gapsLeftRef[0];
+  if (gap1.referenceProcessId !== 10 || gap1.referenceSide !== 'LEFT' || gap1.referencePrice !== 720) {
+    throw new Error(`Expected Left Process #10 as reference with price 720, got ${JSON.stringify(gap1)}`);
+  }
+  if (gap1.priceGap !== 5 || Math.abs(gap1.gapPercent - (5 / 720) * 100) > 0.0001 || gap1.isOverlap !== false) {
+    throw new Error(`Invalid gap calculations: ${JSON.stringify(gap1)}`);
+  }
+
+  // 18. TACTICAL PROCESS GAPS: Right Process as Reference (Closer to Market Price)
+  const rightRefSpans = [
+    {
+      id: 'span-r-1',
+      processId: 20,
+      side: 'BUY' as const,
+      startPrice: 700,
+      endPrice: 705,
+      minPrice: 700,
+      maxPrice: 705,
+      status: 'CHASING',
+      amount: 1,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      label: '#20 BUY',
+      subLabel: '',
+    },
+    {
+      id: 'span-r-2',
+      processId: 21,
+      side: 'BUY' as const,
+      startPrice: 710,
+      endPrice: 715,
+      minPrice: 710,
+      maxPrice: 715,
+      status: 'WAITING_TP_FILL',
+      amount: 1,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      label: '#21 BUY',
+      subLabel: '',
+    },
+  ];
+
+  // Market price at 720 -> Process #21 (mid 712.5, dist 7.5) is closer to market than #20 (mid 702.5, dist 17.5)
+  const gapsRightRef = manager.calculateProcessGaps(rightRefSpans, 720, 690, 730);
+  if (gapsRightRef.length !== 1) {
+    throw new Error(`Expected 1 gap, got ${gapsRightRef.length}`);
+  }
+  const gap2 = gapsRightRef[0];
+  if (gap2.referenceProcessId !== 21 || gap2.referenceSide !== 'RIGHT' || gap2.referencePrice !== 710) {
+    throw new Error(`Expected Right Process #21 as reference with price 710, got ${JSON.stringify(gap2)}`);
+  }
+  if (gap2.priceGap !== 5 || Math.abs(gap2.gapPercent - (5 / 710) * 100) > 0.0001) {
+    throw new Error(`Invalid gap calculations for right reference: ${JSON.stringify(gap2)}`);
+  }
+
+  // 19. TACTICAL PROCESS GAPS: Process Crossed by Center (Market Price)
+  const centerCrossSpans = [
+    {
+      id: 'span-c-1',
+      processId: 30,
+      side: 'BUY' as const,
+      startPrice: 705,
+      endPrice: 715,
+      minPrice: 705,
+      maxPrice: 715,
+      status: 'WAITING_TP_FILL',
+      amount: 1,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      label: '#30 BUY',
+      subLabel: '',
+    },
+    {
+      id: 'span-c-2',
+      processId: 31,
+      side: 'SELL' as const,
+      startPrice: 720,
+      endPrice: 725,
+      minPrice: 720,
+      maxPrice: 725,
+      status: 'CHASING',
+      amount: 1,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      label: '#31 SELL',
+      subLabel: '',
+    },
+  ];
+
+  // Market at 710 (exact midpoint of #30, distance = 0)
+  const gapsCenter = manager.calculateProcessGaps(centerCrossSpans, 710, 700, 730);
+  const gap3 = gapsCenter[0];
+  if (gap3.referenceProcessId !== 30 || gap3.referencePrice !== 715 || Math.abs(gap3.gapPercent - (5 / 715) * 100) > 0.0001) {
+    throw new Error(`Center crossed process failed to act as reference: ${JSON.stringify(gap3)}`);
+  }
+
+  // 20. TACTICAL PROCESS GAPS: Overlapping Spans (Negative Edge-to-Edge Price Gap)
+  const overlapSpans = [
+    {
+      id: 'span-o-1',
+      processId: 40,
+      side: 'BUY' as const,
+      startPrice: 700,
+      endPrice: 712,
+      minPrice: 700,
+      maxPrice: 712,
+      status: 'CHASING',
+      amount: 1,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      label: '#40 BUY',
+      subLabel: '',
+    },
+    {
+      id: 'span-o-2',
+      processId: 41,
+      side: 'SELL' as const,
+      startPrice: 708,
+      endPrice: 720,
+      minPrice: 708,
+      maxPrice: 720,
+      status: 'WAITING_TP_FILL',
+      amount: 1,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      label: '#41 SELL',
+      subLabel: '',
+    },
+  ];
+
+  const gapsOverlap = manager.calculateProcessGaps(overlapSpans, 705, 690, 730);
+  const gapOverlap = gapsOverlap[0];
+  if (gapOverlap.isOverlap !== true || gapOverlap.priceGap !== -4) {
+    throw new Error(`Failed overlap detection: ${JSON.stringify(gapOverlap)}`);
+  }
+
+  // 21. TACTICAL PROCESS GAPS: DOM Synchronization & Rich Tooltip HTML
+  if (typeof document !== 'undefined') {
+    const mockContainer = document.createElement('div');
+    manager.syncGapsDom(mockContainer, gapsLeftRef, 2, 710);
+    if (mockContainer.children.length !== 1) {
+      throw new Error(`Expected 1 gap element in syncGapsDom, got ${mockContainer.children.length}`);
+    }
+  }
+
+  const gapTooltipHtml = manager.getGapTooltipHtml(gap1, 2, 710);
+  if (!gapTooltipHtml.includes('DISTANCIA: #10 ➔ #11') || !gapTooltipHtml.includes('Proceso Referencia:') || !gapTooltipHtml.includes('#10')) {
+    throw new Error(`Failed getGapTooltipHtml check: got ${gapTooltipHtml}`);
+  }
+
   return true;
 }
 

@@ -1684,6 +1684,65 @@ body {
   text-overflow: ellipsis;
 }
 
+/* INTER-PROCESS DISTANCE GAPS (EDGE-TO-EDGE) */
+.tactical-process-gap {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.15s ease, z-index 0.15s ease;
+}
+
+.tactical-process-gap:hover {
+  transform: translate(-50%, -50%) scale(1.12);
+  z-index: 25 !important;
+}
+
+.tactical-gap-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.58rem;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  transition: all 0.15s ease;
+}
+
+.tactical-gap-pill.spaced {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(56, 189, 248, 0.7);
+  color: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+}
+
+.tactical-gap-pill.overlap {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px dashed rgba(245, 158, 11, 0.85);
+  color: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.35);
+}
+
+.tactical-process-gap.compact .tactical-gap-pill {
+  padding: 1px 3px;
+  font-size: 0.52rem;
+  opacity: 0.88;
+}
+
+.tactical-process-gap:hover .tactical-gap-pill {
+  box-shadow: 0 0 12px currentColor !important;
+  opacity: 1 !important;
+}
+
+
 .trigger-gauge-footer {
   display: flex;
   align-items: center;

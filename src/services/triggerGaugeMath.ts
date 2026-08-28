@@ -1,4 +1,4 @@
-import { ProcessRangeSpan, TacticalCluster, TacticalPOI } from '../types';
+import { ProcessRangeSpan, TacticalCluster, TacticalPOI, TacticalProcessGap } from '../types';
 
 /**
  * Pure Mathematical & Geometric Projection Engine for the Tactical Price Spectrum.
@@ -190,3 +190,104 @@ export function clusterPois(
 
   return clusters;
 }
+
+/**
+ * Pure Mathematical Edge-to-Edge Distance Percentage Engine for Adjacent Processes.
+ * 
+ * - Midpoint of process: (P_start + P_end) / 2
+ * - Distance to Center: |P_mid - P_market|
+ * - Reference Process: argmin(|P_mid - P_market|) between adjacent pair (A, B)
+ * - Edge-to-Edge Price Gap: P_min,B - P_max,A
+ * - Percentage: (PriceGap / ReferenceEdgePrice) * 100
+ */
+export function calculateProcessGaps(
+  spans: ProcessRangeSpan[],
+  marketPrice: number,
+  pMin: number,
+  pMax: number
+): TacticalProcessGap[] {
+  if (!Array.isArray(spans) || spans.length < 2 || marketPrice <= 0) return [];
+
+  interface EnrichedSpan {
+    span: ProcessRangeSpan;
+    midPrice: number;
+    minPrice: number;
+    maxPrice: number;
+    distToCenter: number;
+  }
+
+  const enriched: EnrichedSpan[] = spans.map((span) => {
+    const minP = Math.min(span.startPrice, span.endPrice);
+    const maxP = Math.max(span.startPrice, span.endPrice);
+    const midP = (span.startPrice + span.endPrice) / 2;
+    return {
+      span,
+      midPrice: midP,
+      minPrice: minP,
+      maxPrice: maxP,
+      distToCenter: Math.abs(midP - marketPrice),
+    };
+  });
+
+  // Sort horizontally by midpoint ascending
+  enriched.sort((a, b) => a.midPrice - b.midPrice || a.minPrice - b.minPrice);
+
+  const gaps: TacticalProcessGap[] = [];
+
+  for (let i = 0; i < enriched.length - 1; i++) {
+    const left = enriched[i];
+    const right = enriched[i + 1];
+
+    const leftEdgePrice = left.maxPrice;
+    const rightEdgePrice = right.minPrice;
+    const priceGap = rightEdgePrice - leftEdgePrice;
+    const isOverlap = priceGap < 0;
+
+    // Determine reference: closest midpoint to market price
+    let referenceSide: 'LEFT' | 'RIGHT' = 'LEFT';
+    let referenceProcessId = left.span.processId;
+    let referencePrice = leftEdgePrice;
+
+    if (right.distToCenter < left.distToCenter) {
+      referenceSide = 'RIGHT';
+      referenceProcessId = right.span.processId;
+      referencePrice = rightEdgePrice;
+    }
+
+    const gapPercent = referencePrice > 0 ? (priceGap / referencePrice) * 100 : 0;
+
+    const xLeft = calculateLogCoordinate(leftEdgePrice, marketPrice, pMin, pMax);
+    const xRight = calculateLogCoordinate(rightEdgePrice, marketPrice, pMin, pMax);
+    const xCenter = (xLeft + xRight) / 2;
+    const widthPc = Math.abs(xRight - xLeft);
+
+    gaps.push({
+      id: `gap-${left.span.processId}-${right.span.processId}`,
+      leftProcessId: left.span.processId,
+      rightProcessId: right.span.processId,
+      leftSpanId: left.span.id,
+      rightSpanId: right.span.id,
+      leftSpan: left.span,
+      rightSpan: right.span,
+      leftEdgePrice,
+      rightEdgePrice,
+      priceGap,
+      leftMidPrice: left.midPrice,
+      rightMidPrice: right.midPrice,
+      leftDistToCenter: left.distToCenter,
+      rightDistToCenter: right.distToCenter,
+      referenceSide,
+      referenceProcessId,
+      referencePrice,
+      gapPercent,
+      isOverlap,
+      xLeft: Math.min(xLeft, xRight),
+      xRight: Math.max(xLeft, xRight),
+      xCenter,
+      widthPc,
+    });
+  }
+
+  return gaps;
+}
+
