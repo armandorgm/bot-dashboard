@@ -203,6 +203,7 @@ export function extractProcessSpans(
     activeProcesses
       .filter(
         (p) =>
+          (p.instance_id === undefined || p.instance_id === s.instance_id) &&
           normalizeSymbol(p.symbol) === normSymbol &&
           p.status !== 'COMPLETED' &&
           p.status !== 'ABORTED'

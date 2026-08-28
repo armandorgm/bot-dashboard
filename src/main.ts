@@ -369,6 +369,7 @@ function processActivePipelinesData(data: ChasePipelineProcess[], rawText?: stri
   updatePnLDisplay(latestBid, latestAsk);
 
   chartRenderer.draw();
+  triggerGaugeManager.requestRender();
 }
 
 async function fetchActivePipelines() {
