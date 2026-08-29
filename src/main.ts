@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
 // Domain Models & Utilities
-import { InstanceConfig, TickData, HftEvent, ChasePipelineProcess, ModificationInfo } from './types';
+import { InstanceConfig, TickData, HftEvent, ChasePipelineProcess, ModificationInfo, FuturesAccountBalance } from './types';
 import { getSymbolDecimals } from './utils/formatters';
 import { apiClient } from './utils/apiClient';
 
@@ -180,6 +180,9 @@ const marketFeed = new MarketFeedService({
       updatePnLDisplay(latestBid, latestAsk);
     }
   },
+  onBalanceUpdate: (balanceData) => {
+    updateBalanceDisplay(balanceData);
+  },
   onHftEvent: (evt) => {
     hftEvents.push(evt);
     if (hftEvents.length > 500) hftEvents.shift();
@@ -211,7 +214,206 @@ const marketFeed = new MarketFeedService({
   },
 });
 
+// ── Futures Balance State & Management ─────────────────────────────────────
+let lastFuturesBalance: FuturesAccountBalance | null = null;
+
+function updateBalanceDisplay(raw: any) {
+  if (!raw) return;
+  const avail = Number(raw.available_balance ?? raw.availableBalance ?? raw.total_margin_balance ?? raw.totalMarginBalance ?? 0);
+  const total = Number(raw.total_margin_balance ?? raw.totalMarginBalance ?? raw.total_wallet_balance ?? raw.totalWalletBalance ?? avail);
+  const wallet = Number(raw.total_wallet_balance ?? raw.totalWalletBalance ?? total);
+  const unrealized = Number(raw.total_unrealized_profit ?? raw.totalUnrealizedProfit ?? 0);
+  const initMargin = Number(raw.total_initial_margin ?? raw.totalInitialMargin ?? 0);
+  const maintMargin = Number(raw.total_maint_margin ?? raw.totalMaintMargin ?? 0);
+
+  let marginRatioPc = raw.margin_ratio_pc !== undefined ? Number(raw.margin_ratio_pc) : 0;
+  if (!marginRatioPc && total > 0 && maintMargin > 0) {
+    marginRatioPc = (maintMargin / total) * 100;
+  }
+
+  let health: 'SAFE' | 'WARNING' | 'CRITICAL' = 'SAFE';
+  if (raw.health_status) {
+    health = raw.health_status;
+  } else if (marginRatioPc > 80) {
+    health = 'CRITICAL';
+  } else if (marginRatioPc > 50) {
+    health = 'WARNING';
+  }
+
+  const balanceState: FuturesAccountBalance = {
+    available_balance: isNaN(avail) ? 0 : avail,
+    total_margin_balance: isNaN(total) ? 0 : total,
+    total_wallet_balance: isNaN(wallet) ? 0 : wallet,
+    total_unrealized_profit: isNaN(unrealized) ? 0 : unrealized,
+    total_initial_margin: isNaN(initMargin) ? 0 : initMargin,
+    total_maint_margin: isNaN(maintMargin) ? 0 : maintMargin,
+    margin_ratio_pc: isNaN(marginRatioPc) ? 0 : marginRatioPc,
+    health_status: health,
+    updated_at: raw.updated_at || Date.now(),
+    assets: Array.isArray(raw.assets) ? raw.assets : [],
+  };
+
+  lastFuturesBalance = balanceState;
+
+  metricsDisplayController.setBalanceState({
+    availableBalance: balanceState.available_balance,
+    totalMarginBalance: balanceState.total_margin_balance,
+    totalWalletBalance: balanceState.total_wallet_balance,
+    totalUnrealizedProfit: balanceState.total_unrealized_profit,
+    marginRatioPc: balanceState.margin_ratio_pc,
+    healthStatus: balanceState.health_status,
+  });
+
+  const balanceModal = document.getElementById('futures-balance-modal');
+  if (balanceModal && balanceModal.style.display === 'flex') {
+    renderBalanceModal();
+  }
+}
+
+async function fetchFuturesBalance(): Promise<void> {
+  if (!dataSourceManager.isEnabled('balance')) return;
+
+  try {
+    const res = await apiClient.get<any>('/api/account/balance');
+    if (res.ok && res.data) {
+      const payload = res.data.data || res.data;
+      updateBalanceDisplay(payload);
+    } else {
+      // Fallback: query telemetry to extract instance capital
+      const teleRes = await apiClient.get<any>('/api/grid/instances/telemetry');
+      if (teleRes.ok && teleRes.data) {
+        const currentSelected = instanceService.getSelectedInstanceId();
+        const targetInstId = currentSelected !== null ? currentSelected : parseInt(config.instance_id || '1', 10);
+        const tele = teleRes.data[targetInstId] || teleRes.data[String(targetInstId)];
+        if (tele && typeof tele.available_capital === 'number') {
+          updateBalanceDisplay({
+            available_balance: tele.available_capital,
+            total_margin_balance: (tele.available_capital || 0) + (tele.used_capital || 0),
+            total_wallet_balance: (tele.available_capital || 0) + (tele.used_capital || 0),
+            total_unrealized_profit: tele.unrealized_pnl || 0,
+            margin_ratio_pc: 0,
+            health_status: 'SAFE',
+            updated_at: Date.now(),
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[FUTURES BALANCE] Error fetching account balance:', err);
+  }
+}
+
+function renderBalanceModal(): void {
+  if (!lastFuturesBalance) return;
+  const b = lastFuturesBalance;
+
+  const walletEl = document.getElementById('modal-wallet-balance-val');
+  const marginEl = document.getElementById('modal-margin-balance-val');
+  const availEl = document.getElementById('modal-avail-balance-val');
+  const unrealEl = document.getElementById('modal-unrealized-pnl-val');
+  const mrTextEl = document.getElementById('modal-margin-ratio-text');
+  const mrBarEl = document.getElementById('modal-margin-ratio-bar');
+  const healthLedEl = document.getElementById('modal-health-led');
+  const lastUpdatedEl = document.getElementById('modal-balance-last-updated');
+  const assetsTbody = document.getElementById('modal-assets-tbody');
+
+  if (walletEl) walletEl.textContent = `$${b.total_wallet_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (marginEl) marginEl.textContent = `$${b.total_margin_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (availEl) availEl.textContent = `$${b.available_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (unrealEl) {
+    const uSign = b.total_unrealized_profit > 0 ? '+' : '';
+    unrealEl.textContent = `$${uSign}${b.total_unrealized_profit.toFixed(4)}`;
+    unrealEl.style.color = b.total_unrealized_profit > 0 ? '#10b981' : b.total_unrealized_profit < 0 ? '#ef4444' : '#06b6d4';
+  }
+
+  const mrClamped = Math.min(100, Math.max(0, b.margin_ratio_pc));
+  const healthLabel = b.health_status === 'CRITICAL' ? 'CRÍTICO' : b.health_status === 'WARNING' ? 'ALERTA' : 'SEGURO';
+  const healthColor = b.health_status === 'CRITICAL' ? '#ef4444' : b.health_status === 'WARNING' ? '#f59e0b' : '#10b981';
+
+  if (mrTextEl) {
+    mrTextEl.textContent = `${b.margin_ratio_pc.toFixed(2)}% (${healthLabel})`;
+    mrTextEl.style.color = healthColor;
+  }
+  if (mrBarEl) {
+    mrBarEl.style.width = `${mrClamped}%`;
+    mrBarEl.style.backgroundColor = healthColor;
+  }
+  if (healthLedEl) {
+    healthLedEl.className = 'led ' + (b.health_status === 'CRITICAL' ? 'led-red' : b.health_status === 'WARNING' ? 'led-yellow' : 'led-green');
+  }
+  if (lastUpdatedEl) {
+    lastUpdatedEl.textContent = `Última actualización: ${new Date(b.updated_at).toLocaleTimeString()}`;
+  }
+
+  if (assetsTbody) {
+    if (b.assets && b.assets.length > 0) {
+      assetsTbody.innerHTML = b.assets
+        .map(
+          (a) => `
+        <tr style="border-bottom: 1px solid #21262d;">
+          <td style="padding: 8px 12px; font-weight: bold; color: #58a6ff;">${a.asset}</td>
+          <td style="padding: 8px 12px; text-align: right; color: #f3f4f6;">$${Number(a.wallet_balance).toFixed(2)}</td>
+          <td style="padding: 8px 12px; text-align: right; color: #34d399;">$${Number(a.margin_balance).toFixed(2)}</td>
+          <td style="padding: 8px 12px; text-align: right; color: #10b981;">$${Number(a.available_balance).toFixed(2)}</td>
+          <td style="padding: 8px 12px; text-align: right; color: ${Number(a.unrealized_profit) >= 0 ? '#10b981' : '#ef4444'};">
+            ${Number(a.unrealized_profit) >= 0 ? '+' : ''}$${Number(a.unrealized_profit).toFixed(4)}
+          </td>
+        </tr>
+      `
+        )
+        .join('');
+    } else {
+      assetsTbody.innerHTML = `
+        <tr style="border-bottom: 1px solid #21262d;">
+          <td style="padding: 8px 12px; font-weight: bold; color: #58a6ff;">USD (Total Portfolio)</td>
+          <td style="padding: 8px 12px; text-align: right; color: #f3f4f6;">$${b.total_wallet_balance.toFixed(2)}</td>
+          <td style="padding: 8px 12px; text-align: right; color: #34d399;">$${b.total_margin_balance.toFixed(2)}</td>
+          <td style="padding: 8px 12px; text-align: right; color: #10b981;">$${b.available_balance.toFixed(2)}</td>
+          <td style="padding: 8px 12px; text-align: right; color: ${b.total_unrealized_profit >= 0 ? '#10b981' : '#ef4444'};">
+            ${b.total_unrealized_profit >= 0 ? '+' : ''}$${b.total_unrealized_profit.toFixed(4)}
+          </td>
+        </tr>
+      `;
+    }
+  }
+}
+
+function initBalanceModalListeners(): void {
+  const balanceCard = document.getElementById('card-futures-balance');
+  const balanceModal = document.getElementById('futures-balance-modal');
+  const closeBtn = document.getElementById('btn-close-balance-modal');
+  const closeFooterBtn = document.getElementById('btn-close-balance-modal-footer');
+  const refreshBtn = document.getElementById('btn-refresh-balance-modal');
+
+  if (balanceCard && balanceModal) {
+    balanceCard.addEventListener('click', () => {
+      balanceModal.style.display = 'flex';
+      renderBalanceModal();
+      fetchFuturesBalance();
+    });
+  }
+
+  if (closeBtn && balanceModal) {
+    closeBtn.addEventListener('click', () => {
+      balanceModal.style.display = 'none';
+    });
+  }
+
+  if (closeFooterBtn && balanceModal) {
+    closeFooterBtn.addEventListener('click', () => {
+      balanceModal.style.display = 'none';
+    });
+  }
+
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      fetchFuturesBalance();
+    });
+  }
+}
+
 // ── PnL and Metrics Display Coordination ────────────────────────────────────
+
 function updatePnLDisplay(currentBid: number, currentAsk: number) {
   const currentSelected = instanceService.getSelectedInstanceId();
   const targetInstId = currentSelected !== null ? currentSelected : parseInt(config.instance_id || '1', 10);
@@ -882,11 +1084,13 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // Initial Sync
   fetchActivePipelines();
+  fetchFuturesBalance();
   instanceService.fetchInstanceTelemetry(config.instance_id);
   instanceService.fetchInstanceTriggerStatus(config.instance_id);
 
   // Initialize Data Source Controls, Modal Listeners, Navigation Manager and Global Overview
   dataSourceManager.initControls();
+  initBalanceModalListeners();
   instanceNavigationManager.setCallbacks({
     getLoadedInstances: () => instanceService.getLoadedInstances(),
     getSelectedInstanceId: () => instanceService.getSelectedInstanceId(),
@@ -900,6 +1104,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   setInterval(() => {
     if (document.hidden) return;
 
+    fetchFuturesBalance();
+
     if (globalOverviewManager.getViewMode() === 'home') {
       globalOverviewManager.fetchGlobalOverview();
     } else {
@@ -911,12 +1117,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   }, 60000);
 
-  // Network & API Settings Initialization
+  // Network & API Settings & Metrics Display Initialization
   try {
     runNetworkSettingsManagerVerification();
+    runMetricsDisplayControllerVerification();
   } catch (e) {
-    console.warn('[NETWORK TEST] Verification test error:', e);
+    console.warn('[VERIFICATION TEST] Verification test error:', e);
   }
+
 
   networkSettingsManager.initModalListeners();
   networkSettingsManager.onConfigChanged((newCfg) => {
@@ -929,9 +1137,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Reconnect local bot WebSocket
     marketFeed.connectLocalBotWebSocket();
 
-    // Re-sync open orders, pipelines, telemetry, instances, and addons on the new port
+    // Re-sync open orders, pipelines, telemetry, instances, balance and addons on the new port
     openOrdersManager.fetchOpenOrders(undefined, config.symbol);
     fetchActivePipelines();
+    fetchFuturesBalance();
     const activeId = instanceService.getSelectedInstanceId() || config.instance_id;
     instanceService.fetchInstanceTelemetry(activeId);
     instanceService.fetchInstanceTriggerStatus(activeId);

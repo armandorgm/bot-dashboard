@@ -259,3 +259,25 @@ export interface GlobalOverviewResponse {
     trigger_status?: StrategyTriggerStatus;
   }>;
 }
+
+export interface AssetBalanceItem {
+  asset: string;
+  wallet_balance: number;
+  margin_balance: number;
+  available_balance: number;
+  unrealized_profit: number;
+}
+
+export interface FuturesAccountBalance {
+  total_wallet_balance: number;
+  total_margin_balance: number;
+  available_balance: number;
+  total_unrealized_profit: number;
+  total_initial_margin: number;
+  total_maint_margin: number;
+  margin_ratio_pc: number;
+  health_status: 'SAFE' | 'WARNING' | 'CRITICAL';
+  updated_at: number;
+  assets?: AssetBalanceItem[];
+}
+

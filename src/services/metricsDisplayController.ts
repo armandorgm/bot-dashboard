@@ -12,6 +12,15 @@ export interface PnLMetricsState {
   lifetimePnlPerHour: number;
 }
 
+export interface FuturesBalanceMetricsState {
+  availableBalance: number;
+  totalMarginBalance: number;
+  totalWalletBalance: number;
+  totalUnrealizedProfit: number;
+  marginRatioPc: number;
+  healthStatus: 'SAFE' | 'WARNING' | 'CRITICAL';
+}
+
 export class MetricsDisplayController {
   // Cached DOM elements
   private bidEl: HTMLElement | null = null;
@@ -27,6 +36,12 @@ export class MetricsDisplayController {
   private instanceTotalNetEl: HTMLElement | null = null;
   private pnlRateEl: HTMLElement | null = null;
   private lifetimePnlRateEl: HTMLElement | null = null;
+
+  // Cached Futures Balance DOM elements
+  private futuresAvailBalanceEl: HTMLElement | null = null;
+  private futuresTotalBalanceEl: HTMLElement | null = null;
+  private futuresMarginRatioEl: HTMLElement | null = null;
+  private futuresHealthLedEl: HTMLElement | null = null;
 
   // Cached formatted strings for dirty checking
   private lastBidText = '';
@@ -51,6 +66,13 @@ export class MetricsDisplayController {
   private lastLifetimePnlRateText = '';
   private lastLifetimePnlRateClass = '';
 
+  // Cached Balance strings
+  private lastFuturesAvailText = '';
+  private lastFuturesTotalText = '';
+  private lastFuturesMarginRatioText = '';
+  private lastFuturesMarginRatioColor = '';
+  private lastFuturesHealthLedClass = '';
+
   // Pending State
   private pendingTicker = {
     bid: 0,
@@ -69,6 +91,16 @@ export class MetricsDisplayController {
     instanceLifetimeNetTotal: 0,
     pnlPerHour: 0,
     lifetimePnlPerHour: 0,
+    dirty: false,
+  };
+
+  private pendingBalance: (FuturesBalanceMetricsState & { dirty: boolean }) = {
+    availableBalance: 0,
+    totalMarginBalance: 0,
+    totalWalletBalance: 0,
+    totalUnrealizedProfit: 0,
+    marginRatioPc: 0,
+    healthStatus: 'SAFE',
     dirty: false,
   };
 
@@ -98,7 +130,23 @@ export class MetricsDisplayController {
     this.instanceTotalNetEl = document.getElementById('instance-total-net-val');
     this.pnlRateEl = document.getElementById('pnl-rate-val');
     this.lifetimePnlRateEl = document.getElementById('lifetime-pnl-rate-val');
+
+    this.futuresAvailBalanceEl = document.getElementById('futures-avail-balance-val');
+    this.futuresTotalBalanceEl = document.getElementById('futures-total-balance-val');
+    this.futuresMarginRatioEl = document.getElementById('futures-margin-ratio-val');
+    this.futuresHealthLedEl = document.getElementById('futures-health-led');
   }
+
+  public setBalanceState(state: FuturesBalanceMetricsState): void {
+    this.pendingBalance.availableBalance = state.availableBalance;
+    this.pendingBalance.totalMarginBalance = state.totalMarginBalance;
+    this.pendingBalance.totalWalletBalance = state.totalWalletBalance;
+    this.pendingBalance.totalUnrealizedProfit = state.totalUnrealizedProfit;
+    this.pendingBalance.marginRatioPc = state.marginRatioPc;
+    this.pendingBalance.healthStatus = state.healthStatus;
+    this.pendingBalance.dirty = true;
+  }
+
 
   public setTicker(bid: number, ask: number, hz: number, decimals: number): void {
     this.pendingTicker.bid = bid;
@@ -137,6 +185,49 @@ export class MetricsDisplayController {
   public flush(): void {
     this.flushTicker();
     this.flushPnL();
+    this.flushBalance();
+  }
+
+  private flushBalance(): void {
+    if (!this.pendingBalance.dirty) return;
+    this.pendingBalance.dirty = false;
+
+    if (!this.futuresAvailBalanceEl) this.cacheElements();
+
+    const b = this.pendingBalance;
+
+    // 1. Available / Free Margin
+    const availText = `$${b.availableBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (availText !== this.lastFuturesAvailText && this.futuresAvailBalanceEl) {
+      this.futuresAvailBalanceEl.textContent = availText;
+      this.lastFuturesAvailText = availText;
+    }
+
+    // 2. Total Margin Balance / Total Equity
+    const totalText = `$${b.totalMarginBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (totalText !== this.lastFuturesTotalText && this.futuresTotalBalanceEl) {
+      this.futuresTotalBalanceEl.textContent = totalText;
+      this.lastFuturesTotalText = totalText;
+    }
+
+    // 3. Margin Ratio %
+    const mrText = `MR: ${b.marginRatioPc.toFixed(2)}%`;
+    const mrColor = b.healthStatus === 'CRITICAL' ? '#ef4444' : b.healthStatus === 'WARNING' ? '#f59e0b' : '#10b981';
+    if (mrText !== this.lastFuturesMarginRatioText && this.futuresMarginRatioEl) {
+      this.futuresMarginRatioEl.textContent = mrText;
+      this.lastFuturesMarginRatioText = mrText;
+    }
+    if (mrColor !== this.lastFuturesMarginRatioColor && this.futuresMarginRatioEl) {
+      this.futuresMarginRatioEl.style.color = mrColor;
+      this.lastFuturesMarginRatioColor = mrColor;
+    }
+
+    // 4. Health LED
+    const ledClass = 'led ' + (b.healthStatus === 'CRITICAL' ? 'led-red' : b.healthStatus === 'WARNING' ? 'led-yellow' : 'led-green');
+    if (ledClass !== this.lastFuturesHealthLedClass && this.futuresHealthLedEl) {
+      this.futuresHealthLedEl.className = ledClass;
+      this.lastFuturesHealthLedClass = ledClass;
+    }
   }
 
   private flushTicker(): void {

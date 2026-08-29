@@ -12,6 +12,7 @@ export interface MarketFeedCallbacks {
   onPipelinesActive: (pipelines: ChasePipelineProcess[], rawText?: string) => void;
   onSessionUpdate: (data: any) => void;
   onInstanceTelemetry: (data: any) => void;
+  onBalanceUpdate?: (balance: any) => void;
   onStrategyTriggerStatus?: (status: StrategyTriggerStatus) => void;
   onHftEvent: (evt: HftEvent) => void;
   onOpenOrdersRequested: () => void;
@@ -131,6 +132,13 @@ export class MarketFeedService {
           this.callbacks.onPipelinesActive(payload.data);
         } else if (payload.type === 'session_update' && payload.data) {
           this.callbacks.onSessionUpdate(payload.data);
+        } else if (
+          (payload.type === 'balance_update' || payload.type === 'ACCOUNT_UPDATE' || payload.event === 'BALANCE_UPDATE') &&
+          payload.data
+        ) {
+          if (this.callbacks.onBalanceUpdate) {
+            this.callbacks.onBalanceUpdate(payload.data);
+          }
         } else if (
           (payload.type === 'instance_telemetry' ||
             payload.type === 'INSTANCE_TELEMETRY' ||

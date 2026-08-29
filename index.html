@@ -452,6 +452,30 @@
           </div>
         </div>
 
+        <!-- 3. FUTURES WALLET / MARGIN BALANCE -->
+        <div class="diagonal-card futures-balance-card" id="card-futures-balance" style="border-color: rgba(16, 185, 129, 0.35); cursor: pointer; transition: all 0.2s ease;" title="Haga clic para ver desglose detallado de activos y margen">
+          <div class="diagonal-card-header">
+            <span class="diagonal-card-title" style="color: #34d399;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #34d399;"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+              FUTURES BALANCE
+            </span>
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <span class="diagonal-card-subhead" id="futures-margin-ratio-val" style="color: #10b981;" title="Margin Ratio (Riesgo de Liquidación)">MR: 0.00%</span>
+              <span class="led led-green" id="futures-health-led" style="width: 7px; height: 7px;" title="Salud de Margen Óptima"></span>
+            </div>
+          </div>
+          <div class="diagonal-card-body">
+            <div class="diagonal-top-left">
+              <span class="val-primary" id="futures-avail-balance-val" style="color: #34d399;">$0.00</span>
+              <span class="lbl-primary">Free Margin</span>
+            </div>
+            <div class="diagonal-bottom-right">
+              <span class="card-price val-secondary" id="futures-total-balance-val" style="color: #a7f3d0;" title="Total Margin Balance (Equity)">$0.00</span>
+              <span class="lbl-secondary">Total Equity</span>
+            </div>
+          </div>
+        </div>
+
         <!-- 3. REALIZED PnL -->
         <div class="diagonal-card session-pnl-card">
           <div class="diagonal-card-header">
@@ -927,6 +951,101 @@
           <button id="btn-save-network-modal" style="background: #059669; color: #ffffff; border: none; border-radius: 6px; padding: 8px 20px; font-family: inherit; font-size: 12px; font-weight: bold; cursor: pointer; box-shadow: 0 0 12px rgba(5, 150, 105, 0.4);">
             💾 Guardar y Reconectar
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FUTURES BALANCE DETAIL MODAL -->
+    <div id="futures-balance-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); z-index: 9999; justify-content: center; align-items: center; padding: 20px;">
+      <div style="background: #111827; border: 1px solid #374151; border-radius: 12px; width: 100%; max-width: 680px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6); overflow: hidden; font-family: 'JetBrains Mono', monospace;">
+        <!-- Modal Header -->
+        <div style="padding: 16px 20px; border-bottom: 1px solid #1f2937; display: flex; justify-content: space-between; align-items: center; background: #1f2937;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 20px;">💰</span>
+            <h2 style="margin: 0; font-size: 16px; font-weight: bold; color: #f3f4f6;">Binance Futures Account Balance & Margin Health</h2>
+          </div>
+          <button id="btn-close-balance-modal" style="background: transparent; border: none; color: #9ca3af; font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 4px;">✕</button>
+        </div>
+
+        <!-- Modal Content -->
+        <div style="padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 16px;">
+          <!-- Top Metric Highlights -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;">
+            <div style="background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 10px 12px;">
+              <span style="font-size: 10px; color: #8b949e; font-weight: bold; display: block;">WALLET BALANCE</span>
+              <span id="modal-wallet-balance-val" style="font-size: 16px; font-weight: 800; color: #f3f4f6;">$0.00</span>
+            </div>
+            <div style="background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 10px 12px;">
+              <span style="font-size: 10px; color: #8b949e; font-weight: bold; display: block;">MARGIN BALANCE (EQUITY)</span>
+              <span id="modal-margin-balance-val" style="font-size: 16px; font-weight: 800; color: #34d399;">$0.00</span>
+            </div>
+            <div style="background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 10px 12px;">
+              <span style="font-size: 10px; color: #8b949e; font-weight: bold; display: block;">FREE / AVAILABLE</span>
+              <span id="modal-avail-balance-val" style="font-size: 16px; font-weight: 800; color: #10b981;">$0.00</span>
+            </div>
+            <div style="background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 10px 12px;">
+              <span style="font-size: 10px; color: #8b949e; font-weight: bold; display: block;">UNREALIZED PnL</span>
+              <span id="modal-unrealized-pnl-val" style="font-size: 16px; font-weight: 800; color: #06b6d4;">$0.00</span>
+            </div>
+          </div>
+
+          <!-- Risk & Margin Health Bar -->
+          <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 11px; color: #9ca3af; font-weight: bold;">FACTOR DE RIESGO / MARGIN RATIO:</span>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span id="modal-margin-ratio-text" style="font-size: 12px; font-weight: bold; color: #10b981;">0.00% (SEGURO)</span>
+                <span class="led led-green" id="modal-health-led" style="width: 8px; height: 8px;"></span>
+              </div>
+            </div>
+            <div style="width: 100%; height: 8px; background: #0d1117; border-radius: 4px; overflow: hidden; border: 1px solid #374151;">
+              <div id="modal-margin-ratio-bar" style="width: 0%; height: 100%; background: #10b981; transition: width 0.3s ease, background-color 0.3s ease;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 10px; color: #6b7280;">
+              <span>0% Seguro</span>
+              <span>50% Alerta</span>
+              <span>100% Liquidación</span>
+            </div>
+          </div>
+
+          <!-- Asset Breakdown Table -->
+          <div style="background: #161b22; border: 1px solid #21262d; border-radius: 8px; overflow: hidden;">
+            <div style="padding: 10px 14px; background: #1f2937; border-bottom: 1px solid #374151; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 11px; font-weight: bold; color: #f3f4f6;">DESGLOSE POR ACTIVO</span>
+              <span style="font-size: 10px; color: #9ca3af;">USDⓈ-M Margined</span>
+            </div>
+            <div style="overflow-x: auto;">
+              <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 11px;">
+                <thead>
+                  <tr style="background: #0d1117; color: #8b949e; border-bottom: 1px solid #21262d;">
+                    <th style="padding: 8px 12px;">ACTIVO</th>
+                    <th style="padding: 8px 12px; text-align: right;">WALLET</th>
+                    <th style="padding: 8px 12px; text-align: right;">MARGIN BAL</th>
+                    <th style="padding: 8px 12px; text-align: right;">DISPONIBLE</th>
+                    <th style="padding: 8px 12px; text-align: right;">UNREALIZED</th>
+                  </tr>
+                </thead>
+                <tbody id="modal-assets-tbody">
+                  <tr>
+                    <td colspan="5" style="padding: 16px; text-align: center; color: #6b7280;">Consultando balance de Binance...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal Footer -->
+        <div style="padding: 12px 20px; border-top: 1px solid #1f2937; display: flex; justify-content: space-between; align-items: center; background: #161b22;">
+          <span id="modal-balance-last-updated" style="font-size: 10px; color: #6b7280;">Última actualización: --</span>
+          <div style="display: flex; gap: 8px;">
+            <button id="btn-refresh-balance-modal" style="background: #374151; color: #d1d5db; border: 1px solid #4b5563; border-radius: 6px; padding: 6px 14px; font-size: 11px; font-weight: bold; cursor: pointer;">
+              🔄 Actualizar
+            </button>
+            <button id="btn-close-balance-modal-footer" style="background: #10b981; color: #000000; border: none; border-radius: 6px; padding: 6px 16px; font-size: 11px; font-weight: bold; cursor: pointer;">
+              Entendido
+            </button>
+          </div>
         </div>
       </div>
     </div>

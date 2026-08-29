@@ -11,6 +11,7 @@ export interface DataSourceFlags {
   stats: boolean;
   mods: boolean;
   chart: boolean;
+  balance: boolean;
 }
 
 export type DataSourceKey = keyof DataSourceFlags;
@@ -23,6 +24,7 @@ export class DataSourceManager {
     stats: true,
     mods: true,
     chart: true,
+    balance: true,
   };
 
   public isEnabled(key: DataSourceKey): boolean {
@@ -53,14 +55,15 @@ export class DataSourceManager {
   }
 
   public setAll(enabled: boolean): void {
-    const keys: DataSourceKey[] = ['ticker', 'orders', 'queries', 'stats', 'mods', 'chart'];
+    const keys: DataSourceKey[] = ['ticker', 'orders', 'queries', 'stats', 'mods', 'chart', 'balance'];
     for (const key of keys) {
       this.setDataSource(key, enabled);
     }
   }
 
   public initControls(): void {
-    const ALL_KEYS: DataSourceKey[] = ['ticker', 'orders', 'queries', 'stats', 'mods', 'chart'];
+    const ALL_KEYS: DataSourceKey[] = ['ticker', 'orders', 'queries', 'stats', 'mods', 'chart', 'balance'];
+
 
     for (const key of ALL_KEYS) {
       const card = document.getElementById(`ds-card-${key}`);

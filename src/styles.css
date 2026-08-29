@@ -250,6 +250,12 @@ body {
   box-shadow: 0 6px 24px -4px rgba(0, 0, 0, 0.6);
 }
 
+.futures-balance-card:hover {
+  border-color: rgba(16, 185, 129, 0.55) !important;
+  box-shadow: 0 6px 24px -4px rgba(16, 185, 129, 0.25) !important;
+}
+
+
 /* Precise diagonal division line cut from top-left to bottom-right */
 .diagonal-card::before {
   content: '';

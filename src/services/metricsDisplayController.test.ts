@@ -23,6 +23,22 @@ export function runMetricsDisplayControllerVerification(): boolean {
   mockSessionPnLEl.id = 'session-pnl-val';
   document.body.appendChild(mockSessionPnLEl);
 
+  const mockAvailBalanceEl = document.createElement('div');
+  mockAvailBalanceEl.id = 'futures-avail-balance-val';
+  document.body.appendChild(mockAvailBalanceEl);
+
+  const mockTotalBalanceEl = document.createElement('div');
+  mockTotalBalanceEl.id = 'futures-total-balance-val';
+  document.body.appendChild(mockTotalBalanceEl);
+
+  const mockMarginRatioEl = document.createElement('div');
+  mockMarginRatioEl.id = 'futures-margin-ratio-val';
+  document.body.appendChild(mockMarginRatioEl);
+
+  const mockHealthLedEl = document.createElement('div');
+  mockHealthLedEl.id = 'futures-health-led';
+  document.body.appendChild(mockHealthLedEl);
+
   const controller = new MetricsDisplayController(FRAME_BUDGET_MS);
 
   try {
@@ -76,6 +92,44 @@ export function runMetricsDisplayControllerVerification(): boolean {
       throw new Error(`Expected positive class on PnL, got '${mockSessionPnLEl.className}'`);
     }
 
+    // 5. Balance State and Health Indicator Test
+    controller.setBalanceState({
+      availableBalance: 850.5,
+      totalMarginBalance: 1250.75,
+      totalWalletBalance: 1240.0,
+      totalUnrealizedProfit: 10.75,
+      marginRatioPc: 2.34,
+      healthStatus: 'SAFE',
+    });
+
+    controller.flush();
+    if ((mockAvailBalanceEl.textContent as string) !== '$850.50') {
+      throw new Error(`Expected available balance '$850.50', got '${mockAvailBalanceEl.textContent}'`);
+    }
+    if ((mockTotalBalanceEl.textContent as string) !== '$1,250.75') {
+      throw new Error(`Expected total margin balance '$1,250.75', got '${mockTotalBalanceEl.textContent}'`);
+    }
+    if ((mockMarginRatioEl.textContent as string) !== 'MR: 2.34%') {
+      throw new Error(`Expected margin ratio 'MR: 2.34%', got '${mockMarginRatioEl.textContent}'`);
+    }
+    if (!mockHealthLedEl.className.includes('led-green')) {
+      throw new Error(`Expected safe health class 'led-green', got '${mockHealthLedEl.className}'`);
+    }
+
+    // 6. Critical Health Margin Ratio Test
+    controller.setBalanceState({
+      availableBalance: 50.0,
+      totalMarginBalance: 500.0,
+      totalWalletBalance: 600.0,
+      totalUnrealizedProfit: -100.0,
+      marginRatioPc: 85.5,
+      healthStatus: 'CRITICAL',
+    });
+    controller.flush();
+    if (!mockHealthLedEl.className.includes('led-red')) {
+      throw new Error(`Expected critical health class 'led-red', got '${mockHealthLedEl.className}'`);
+    }
+
     return true;
   } finally {
     controller.stop();
@@ -84,5 +138,10 @@ export function runMetricsDisplayControllerVerification(): boolean {
     if (mockSpreadEl.parentNode) mockSpreadEl.parentNode.removeChild(mockSpreadEl);
     if (mockFeedRateEl.parentNode) mockFeedRateEl.parentNode.removeChild(mockFeedRateEl);
     if (mockSessionPnLEl.parentNode) mockSessionPnLEl.parentNode.removeChild(mockSessionPnLEl);
+    if (mockAvailBalanceEl.parentNode) mockAvailBalanceEl.parentNode.removeChild(mockAvailBalanceEl);
+    if (mockTotalBalanceEl.parentNode) mockTotalBalanceEl.parentNode.removeChild(mockTotalBalanceEl);
+    if (mockMarginRatioEl.parentNode) mockMarginRatioEl.parentNode.removeChild(mockMarginRatioEl);
+    if (mockHealthLedEl.parentNode) mockHealthLedEl.parentNode.removeChild(mockHealthLedEl);
   }
 }
+
