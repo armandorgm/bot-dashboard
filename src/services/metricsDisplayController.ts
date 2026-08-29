@@ -37,11 +37,16 @@ export class MetricsDisplayController {
   private pnlRateEl: HTMLElement | null = null;
   private lifetimePnlRateEl: HTMLElement | null = null;
 
-  // Cached Futures Balance DOM elements
+  // Cached Futures Balance DOM elements (Instance & Global Overview)
   private futuresAvailBalanceEl: HTMLElement | null = null;
   private futuresTotalBalanceEl: HTMLElement | null = null;
   private futuresMarginRatioEl: HTMLElement | null = null;
   private futuresHealthLedEl: HTMLElement | null = null;
+
+  private ovFuturesAvailBalanceEl: HTMLElement | null = null;
+  private ovFuturesTotalBalanceEl: HTMLElement | null = null;
+  private ovFuturesMarginRatioEl: HTMLElement | null = null;
+  private ovFuturesHealthLedEl: HTMLElement | null = null;
 
   // Cached formatted strings for dirty checking
   private lastBidText = '';
@@ -132,9 +137,15 @@ export class MetricsDisplayController {
     this.lifetimePnlRateEl = document.getElementById('lifetime-pnl-rate-val');
 
     this.futuresAvailBalanceEl = document.getElementById('futures-avail-balance-val');
+    this.futuresAvailBalanceEl = document.getElementById('futures-avail-balance-val');
     this.futuresTotalBalanceEl = document.getElementById('futures-total-balance-val');
     this.futuresMarginRatioEl = document.getElementById('futures-margin-ratio-val');
     this.futuresHealthLedEl = document.getElementById('futures-health-led');
+
+    this.ovFuturesAvailBalanceEl = document.getElementById('ov-futures-avail-balance-val');
+    this.ovFuturesTotalBalanceEl = document.getElementById('ov-futures-total-balance-val');
+    this.ovFuturesMarginRatioEl = document.getElementById('ov-futures-margin-ratio-val');
+    this.ovFuturesHealthLedEl = document.getElementById('ov-futures-health-led');
   }
 
   public setBalanceState(state: FuturesBalanceMetricsState): void {
@@ -146,7 +157,6 @@ export class MetricsDisplayController {
     this.pendingBalance.healthStatus = state.healthStatus;
     this.pendingBalance.dirty = true;
   }
-
 
   public setTicker(bid: number, ask: number, hz: number, decimals: number): void {
     this.pendingTicker.bid = bid;
@@ -192,40 +202,45 @@ export class MetricsDisplayController {
     if (!this.pendingBalance.dirty) return;
     this.pendingBalance.dirty = false;
 
-    if (!this.futuresAvailBalanceEl) this.cacheElements();
+    if (!this.futuresAvailBalanceEl || !this.ovFuturesAvailBalanceEl) this.cacheElements();
 
     const b = this.pendingBalance;
 
     // 1. Available / Free Margin
     const availText = `$${b.availableBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    if (availText !== this.lastFuturesAvailText && this.futuresAvailBalanceEl) {
-      this.futuresAvailBalanceEl.textContent = availText;
+    if (availText !== this.lastFuturesAvailText) {
+      if (this.futuresAvailBalanceEl) this.futuresAvailBalanceEl.textContent = availText;
+      if (this.ovFuturesAvailBalanceEl) this.ovFuturesAvailBalanceEl.textContent = availText;
       this.lastFuturesAvailText = availText;
     }
 
     // 2. Total Margin Balance / Total Equity
     const totalText = `$${b.totalMarginBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    if (totalText !== this.lastFuturesTotalText && this.futuresTotalBalanceEl) {
-      this.futuresTotalBalanceEl.textContent = totalText;
+    if (totalText !== this.lastFuturesTotalText) {
+      if (this.futuresTotalBalanceEl) this.futuresTotalBalanceEl.textContent = totalText;
+      if (this.ovFuturesTotalBalanceEl) this.ovFuturesTotalBalanceEl.textContent = totalText;
       this.lastFuturesTotalText = totalText;
     }
 
     // 3. Margin Ratio %
     const mrText = `MR: ${b.marginRatioPc.toFixed(2)}%`;
     const mrColor = b.healthStatus === 'CRITICAL' ? '#ef4444' : b.healthStatus === 'WARNING' ? '#f59e0b' : '#10b981';
-    if (mrText !== this.lastFuturesMarginRatioText && this.futuresMarginRatioEl) {
-      this.futuresMarginRatioEl.textContent = mrText;
+    if (mrText !== this.lastFuturesMarginRatioText) {
+      if (this.futuresMarginRatioEl) this.futuresMarginRatioEl.textContent = mrText;
+      if (this.ovFuturesMarginRatioEl) this.ovFuturesMarginRatioEl.textContent = mrText;
       this.lastFuturesMarginRatioText = mrText;
     }
-    if (mrColor !== this.lastFuturesMarginRatioColor && this.futuresMarginRatioEl) {
-      this.futuresMarginRatioEl.style.color = mrColor;
+    if (mrColor !== this.lastFuturesMarginRatioColor) {
+      if (this.futuresMarginRatioEl) this.futuresMarginRatioEl.style.color = mrColor;
+      if (this.ovFuturesMarginRatioEl) this.ovFuturesMarginRatioEl.style.color = mrColor;
       this.lastFuturesMarginRatioColor = mrColor;
     }
 
     // 4. Health LED
     const ledClass = 'led ' + (b.healthStatus === 'CRITICAL' ? 'led-red' : b.healthStatus === 'WARNING' ? 'led-yellow' : 'led-green');
-    if (ledClass !== this.lastFuturesHealthLedClass && this.futuresHealthLedEl) {
-      this.futuresHealthLedEl.className = ledClass;
+    if (ledClass !== this.lastFuturesHealthLedClass) {
+      if (this.futuresHealthLedEl) this.futuresHealthLedEl.className = ledClass;
+      if (this.ovFuturesHealthLedEl) this.ovFuturesHealthLedEl.className = ledClass;
       this.lastFuturesHealthLedClass = ledClass;
     }
   }

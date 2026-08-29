@@ -90,22 +90,49 @@
         </div>
 
         <!-- Global Summary Cards -->
-        <div class="diagonal-card" style="border: 1px solid rgba(59, 130, 246, 0.35); min-height: 100px;">
-          <div class="diagonal-card-header">
-            <span class="diagonal-card-title" style="color: #60a5fa;">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #60a5fa;"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-              PORTFOLIO NET TOTAL PnL
-            </span>
-            <span class="diagonal-card-subhead" style="color: #93c5fd;">Realized+Unrealized</span>
-          </div>
-          <div class="diagonal-card-body">
-            <div class="diagonal-top-left">
-              <span class="card-price val-primary" id="ov-session-net-total-val" style="font-size: 1.35rem; color: #60a5fa;">$0.0000</span>
-              <span class="lbl-primary">Session</span>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+          <!-- 1. Portfolio Net Total PnL -->
+          <div class="diagonal-card" style="border: 1px solid rgba(59, 130, 246, 0.35); min-height: 100px;">
+            <div class="diagonal-card-header">
+              <span class="diagonal-card-title" style="color: #60a5fa;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #60a5fa;"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                PORTFOLIO NET TOTAL PnL
+              </span>
+              <span class="diagonal-card-subhead" style="color: #93c5fd;">Realized+Unrealized</span>
             </div>
-            <div class="diagonal-bottom-right">
-              <span class="val-secondary" id="ov-lifetime-net-total-val" style="font-size: 0.95rem; color: #93c5fd;">$0.0000</span>
-              <span class="lbl-secondary">Lifetime</span>
+            <div class="diagonal-card-body">
+              <div class="diagonal-top-left">
+                <span class="card-price val-primary" id="ov-session-net-total-val" style="font-size: 1.35rem; color: #60a5fa;">$0.0000</span>
+                <span class="lbl-primary">Session</span>
+              </div>
+              <div class="diagonal-bottom-right">
+                <span class="val-secondary" id="ov-lifetime-net-total-val" style="font-size: 0.95rem; color: #93c5fd;">$0.0000</span>
+                <span class="lbl-secondary">Lifetime</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. Global Futures Account Balance Card -->
+          <div class="diagonal-card futures-balance-card" id="ov-card-futures-balance" style="border: 1px solid rgba(16, 185, 129, 0.35); min-height: 100px; cursor: pointer;" title="Haga clic para ver desglose detallado de activos y margen">
+            <div class="diagonal-card-header">
+              <span class="diagonal-card-title" style="color: #34d399;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #34d399;"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+                BINANCE FUTURES BALANCE
+              </span>
+              <div style="display: flex; align-items: center; gap: 5px;">
+                <span class="diagonal-card-subhead" id="ov-futures-margin-ratio-val" style="color: #10b981;" title="Margin Ratio (Riesgo de Liquidación)">MR: 0.00%</span>
+                <span class="led led-green" id="ov-futures-health-led" style="width: 7px; height: 7px;" title="Salud de Margen Óptima"></span>
+              </div>
+            </div>
+            <div class="diagonal-card-body">
+              <div class="diagonal-top-left">
+                <span class="card-price val-primary" id="ov-futures-avail-balance-val" style="color: #34d399; font-size: 1.35rem;">$0.00</span>
+                <span class="lbl-primary">Free Margin</span>
+              </div>
+              <div class="diagonal-bottom-right">
+                <span class="val-secondary" id="ov-futures-total-balance-val" style="color: #a7f3d0; font-size: 0.95rem;" title="Total Margin Balance (Equity)">$0.00</span>
+                <span class="lbl-secondary">Total Equity</span>
+              </div>
             </div>
           </div>
         </div>

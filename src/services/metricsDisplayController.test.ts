@@ -39,7 +39,24 @@ export function runMetricsDisplayControllerVerification(): boolean {
   mockHealthLedEl.id = 'futures-health-led';
   document.body.appendChild(mockHealthLedEl);
 
+  const mockOvAvailBalanceEl = document.createElement('div');
+  mockOvAvailBalanceEl.id = 'ov-futures-avail-balance-val';
+  document.body.appendChild(mockOvAvailBalanceEl);
+
+  const mockOvTotalBalanceEl = document.createElement('div');
+  mockOvTotalBalanceEl.id = 'ov-futures-total-balance-val';
+  document.body.appendChild(mockOvTotalBalanceEl);
+
+  const mockOvMarginRatioEl = document.createElement('div');
+  mockOvMarginRatioEl.id = 'ov-futures-margin-ratio-val';
+  document.body.appendChild(mockOvMarginRatioEl);
+
+  const mockOvHealthLedEl = document.createElement('div');
+  mockOvHealthLedEl.id = 'ov-futures-health-led';
+  document.body.appendChild(mockOvHealthLedEl);
+
   const controller = new MetricsDisplayController(FRAME_BUDGET_MS);
+
 
   try {
     controller.cacheElements();
@@ -106,14 +123,23 @@ export function runMetricsDisplayControllerVerification(): boolean {
     if ((mockAvailBalanceEl.textContent as string) !== '$850.50') {
       throw new Error(`Expected available balance '$850.50', got '${mockAvailBalanceEl.textContent}'`);
     }
+    if ((mockOvAvailBalanceEl.textContent as string) !== '$850.50') {
+      throw new Error(`Expected Global Overview available balance '$850.50', got '${mockOvAvailBalanceEl.textContent}'`);
+    }
     if ((mockTotalBalanceEl.textContent as string) !== '$1,250.75') {
       throw new Error(`Expected total margin balance '$1,250.75', got '${mockTotalBalanceEl.textContent}'`);
+    }
+    if ((mockOvTotalBalanceEl.textContent as string) !== '$1,250.75') {
+      throw new Error(`Expected Global Overview total balance '$1,250.75', got '${mockOvTotalBalanceEl.textContent}'`);
     }
     if ((mockMarginRatioEl.textContent as string) !== 'MR: 2.34%') {
       throw new Error(`Expected margin ratio 'MR: 2.34%', got '${mockMarginRatioEl.textContent}'`);
     }
-    if (!mockHealthLedEl.className.includes('led-green')) {
-      throw new Error(`Expected safe health class 'led-green', got '${mockHealthLedEl.className}'`);
+    if ((mockOvMarginRatioEl.textContent as string) !== 'MR: 2.34%') {
+      throw new Error(`Expected Global Overview margin ratio 'MR: 2.34%', got '${mockOvMarginRatioEl.textContent}'`);
+    }
+    if (!mockHealthLedEl.className.includes('led-green') || !mockOvHealthLedEl.className.includes('led-green')) {
+      throw new Error(`Expected safe health class 'led-green'`);
     }
 
     // 6. Critical Health Margin Ratio Test
@@ -126,8 +152,8 @@ export function runMetricsDisplayControllerVerification(): boolean {
       healthStatus: 'CRITICAL',
     });
     controller.flush();
-    if (!mockHealthLedEl.className.includes('led-red')) {
-      throw new Error(`Expected critical health class 'led-red', got '${mockHealthLedEl.className}'`);
+    if (!mockHealthLedEl.className.includes('led-red') || !mockOvHealthLedEl.className.includes('led-red')) {
+      throw new Error(`Expected critical health class 'led-red'`);
     }
 
     return true;
@@ -142,6 +168,11 @@ export function runMetricsDisplayControllerVerification(): boolean {
     if (mockTotalBalanceEl.parentNode) mockTotalBalanceEl.parentNode.removeChild(mockTotalBalanceEl);
     if (mockMarginRatioEl.parentNode) mockMarginRatioEl.parentNode.removeChild(mockMarginRatioEl);
     if (mockHealthLedEl.parentNode) mockHealthLedEl.parentNode.removeChild(mockHealthLedEl);
+    if (mockOvAvailBalanceEl.parentNode) mockOvAvailBalanceEl.parentNode.removeChild(mockOvAvailBalanceEl);
+    if (mockOvTotalBalanceEl.parentNode) mockOvTotalBalanceEl.parentNode.removeChild(mockOvTotalBalanceEl);
+    if (mockOvMarginRatioEl.parentNode) mockOvMarginRatioEl.parentNode.removeChild(mockOvMarginRatioEl);
+    if (mockOvHealthLedEl.parentNode) mockOvHealthLedEl.parentNode.removeChild(mockOvHealthLedEl);
   }
 }
+
 

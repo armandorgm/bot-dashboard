@@ -380,18 +380,23 @@ function renderBalanceModal(): void {
 
 function initBalanceModalListeners(): void {
   const balanceCard = document.getElementById('card-futures-balance');
+  const ovBalanceCard = document.getElementById('ov-card-futures-balance');
   const balanceModal = document.getElementById('futures-balance-modal');
   const closeBtn = document.getElementById('btn-close-balance-modal');
   const closeFooterBtn = document.getElementById('btn-close-balance-modal-footer');
   const refreshBtn = document.getElementById('btn-refresh-balance-modal');
 
-  if (balanceCard && balanceModal) {
-    balanceCard.addEventListener('click', () => {
+  const openModal = () => {
+    if (balanceModal) {
       balanceModal.style.display = 'flex';
       renderBalanceModal();
       fetchFuturesBalance();
-    });
-  }
+    }
+  };
+
+  if (balanceCard) balanceCard.addEventListener('click', openModal);
+  if (ovBalanceCard) ovBalanceCard.addEventListener('click', openModal);
+
 
   if (closeBtn && balanceModal) {
     closeBtn.addEventListener('click', () => {
