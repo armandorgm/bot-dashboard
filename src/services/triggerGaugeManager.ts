@@ -25,6 +25,7 @@ import {
   ContextGetter,
   extractProcessSpans,
   extractTacticalPois,
+  hydrateCanonicalTriggerStatus,
   PoiSources,
   sanitizeTriggerStatus,
 } from './triggerGaugeState';
@@ -57,29 +58,7 @@ export class TriggerGaugeManager {
   }
 
   public getStatus(): StrategyTriggerStatus | null {
-    if (this.currentStatus) return this.currentStatus;
-    if (this.contextGetter) {
-      const ctx = this.contextGetter();
-      if (ctx.instanceId > 0 && ctx.latestPrice > 0) {
-        return this.getSanitizedStatus({
-          instance_id: ctx.instanceId,
-          symbol: ctx.symbol || '--',
-          strategy: 'GRID_POSITION_FLIPPER',
-          state: 'TREND_ACCUMULATION',
-          conmutator_mode: 'TREND_BUY',
-          resolved_side: 'BUY',
-          position_side: 'LONG',
-          entry_price: ctx.latestPrice,
-          current_price: ctx.latestPrice,
-          trigger_price: ctx.latestPrice * (1 - 0.0075),
-          current_metric_pc: 0.3523,
-          required_metric_pc: 0.75,
-          delta_remaining_pc: 0.3977,
-          multiplier: 3.0,
-        });
-      }
-    }
-    return null;
+    return this.currentStatus;
   }
 
   public getStatusForInstance(instanceId: number): StrategyTriggerStatus | undefined {
@@ -94,9 +73,9 @@ export class TriggerGaugeManager {
 
   public setStatus(status: StrategyTriggerStatus | null): void {
     if (status) {
-      const sanitized = this.getSanitizedStatus(status);
-      this.currentStatus = sanitized;
-      this.instanceStatusMap.set(sanitized.instance_id, sanitized);
+      const canonical = hydrateCanonicalTriggerStatus(status) || sanitizeTriggerStatus(status, this.contextGetter);
+      this.currentStatus = canonical;
+      this.instanceStatusMap.set(canonical.instance_id, canonical);
     } else {
       this.currentStatus = null;
     }
@@ -105,10 +84,10 @@ export class TriggerGaugeManager {
 
   public updateFromTelemetry(instanceId: number, status?: StrategyTriggerStatus): void {
     if (status) {
-      const sanitized = this.getSanitizedStatus(status);
-      this.instanceStatusMap.set(instanceId, sanitized);
+      const canonical = hydrateCanonicalTriggerStatus(status) || sanitizeTriggerStatus(status, this.contextGetter);
+      this.instanceStatusMap.set(instanceId, canonical);
       if (this.currentStatus?.instance_id === instanceId || !this.currentStatus) {
-        this.currentStatus = sanitized;
+        this.currentStatus = canonical;
         this.requestRender();
       }
     }
@@ -129,7 +108,7 @@ export class TriggerGaugeManager {
   }
 
   public getSanitizedStatus(raw: Partial<StrategyTriggerStatus>): StrategyTriggerStatus {
-    return sanitizeTriggerStatus(raw, this.contextGetter);
+    return hydrateCanonicalTriggerStatus(raw as StrategyTriggerStatus) || sanitizeTriggerStatus(raw, this.contextGetter);
   }
 
   public getMetricColor(

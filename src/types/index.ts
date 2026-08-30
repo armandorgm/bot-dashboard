@@ -153,22 +153,22 @@ export interface StrategyTriggerStatus {
   instance_id: number;
   symbol: string;
   strategy: string;
-  condition_name?: string;
+  condition_name: string;
   state: TriggerState;
-  conmutator_mode?: ConmutatorMode;
-  resolved_side?: ResolvedSide;
+  conmutator_mode: ConmutatorMode;
+  resolved_side: ResolvedSide;
   position_side: PositionSide;
   entry_price: number;
   current_price: number;
-  trigger_price: number | null;
-  actual_pullback_pc?: number;
-  required_pullback_pc?: number;
+  trigger_price: number;
   current_metric_pc: number;
   required_metric_pc: number;
   delta_remaining_pc: number;
-  multiplier?: number;
+  multiplier: number;
+  updated_at: number;
   timestamp?: string;
-  updated_at?: number;
+  actual_pullback_pc?: number;
+  required_pullback_pc?: number;
 }
 
 export interface WsBusinessNotificationMessage {

@@ -19,7 +19,39 @@ export interface PoiSources {
 export type ContextGetter = () => { symbol: string; instanceId: number; latestPrice: number };
 
 /**
- * Sanitize raw telemetry or partial status to canonical StrategyTriggerStatus (v2.2.0)
+ * Canonical Trigger Status Hydration (Backend SSOT).
+ * Strict mapping without heuristics, guessing or hardcoded fallbacks.
+ */
+export function hydrateCanonicalTriggerStatus(
+  raw: Partial<StrategyTriggerStatus>
+): StrategyTriggerStatus | null {
+  if (!raw || raw.instance_id === undefined || !raw.symbol) {
+    return null;
+  }
+
+  return {
+    instance_id: Number(raw.instance_id),
+    symbol: raw.symbol,
+    strategy: raw.strategy || 'GRID_POSITION_FLIPPER',
+    condition_name: raw.condition_name || 'PULLBACK_CONMUTATOR',
+    state: (raw.state as TriggerState) || 'READY',
+    conmutator_mode: (raw.conmutator_mode as ConmutatorMode) || 'SEED',
+    resolved_side: (raw.resolved_side as ResolvedSide) || 'BUY',
+    position_side: (raw.position_side as PositionSide) || 'FLAT',
+    entry_price: Number(raw.entry_price || raw.current_price || 0),
+    current_price: Number(raw.current_price || raw.entry_price || 0),
+    trigger_price: Number(raw.trigger_price || raw.entry_price || 0),
+    current_metric_pc: Number(raw.current_metric_pc ?? 0.0),
+    required_metric_pc: Number(raw.required_metric_pc ?? 0.0),
+    delta_remaining_pc: Number(raw.delta_remaining_pc ?? 0.0),
+    multiplier: Number(raw.multiplier ?? 1.0),
+    timestamp: raw.timestamp || new Date().toISOString(),
+    updated_at: Number(raw.updated_at ?? Date.now() / 1000),
+  };
+}
+
+/**
+ * Backward compatibility alias for hydrateCanonicalTriggerStatus.
  */
 export function sanitizeTriggerStatus(
   raw: Partial<StrategyTriggerStatus>,
@@ -28,127 +60,34 @@ export function sanitizeTriggerStatus(
   const ctx = contextGetter ? contextGetter() : undefined;
   const symbol = raw.symbol || ctx?.symbol || '--';
   const instanceId = raw.instance_id || ctx?.instanceId || 1;
-  const strategy = raw.strategy || 'GRID_POSITION_FLIPPER';
-
-  const reqMetric =
-    typeof raw.required_metric_pc === 'number' && raw.required_metric_pc !== 0
-      ? raw.required_metric_pc
-      : typeof raw.required_pullback_pc === 'number' && raw.required_pullback_pc !== 0
-      ? raw.required_pullback_pc * 100
-      : 0.75;
-
-  const currMetric =
-    typeof raw.current_metric_pc === 'number'
-      ? raw.current_metric_pc
-      : typeof raw.actual_pullback_pc === 'number'
-      ? raw.actual_pullback_pc * 100
-      : 0.0;
-
-  const deltaRem =
-    typeof raw.delta_remaining_pc === 'number'
-      ? raw.delta_remaining_pc
-      : Math.max(0, reqMetric - currMetric);
-
-  const posSide: PositionSide = raw.position_side || 'LONG';
-  const currentPrice =
-    raw.current_price && raw.current_price > 0
-      ? raw.current_price
-      : ctx && ctx.latestPrice > 0
-      ? ctx.latestPrice
-      : 0;
-  const entryPrice =
-    raw.entry_price && raw.entry_price > 0 ? raw.entry_price : currentPrice;
-
-  let triggerPrice = raw.trigger_price;
-  if ((!triggerPrice || triggerPrice <= 0) && entryPrice > 0) {
-    const dir = posSide === 'LONG' ? -1 : 1;
-    triggerPrice = entryPrice * (1 + dir * (reqMetric / 100));
-  }
-  if (!triggerPrice || triggerPrice <= 0) {
-    triggerPrice = entryPrice;
-  }
-
-  // Normalize raw states to v2.2.0 TriggerState
-  let state: TriggerState = raw.state as TriggerState;
-  if (!state || state === 'NO_DATA') {
-    if (posSide === 'FLAT') {
-      state = 'READY';
-    } else if (currMetric >= reqMetric) {
-      state = 'FLIP_CONMUTATED';
-    } else {
-      state = 'TREND_ACCUMULATION';
-    }
-  } else if (state === ('PASSED' as any)) {
-    state = 'FLIP_CONMUTATED';
-  } else if (state === ('BLOCKED' as any)) {
-    state = 'TREND_ACCUMULATION';
-  }
-
-  // Determine conmutator_mode & resolved_side per v2.2.0 spec
-  let conmutatorMode: ConmutatorMode = raw.conmutator_mode as ConmutatorMode;
-  let resolvedSide: ResolvedSide = raw.resolved_side as ResolvedSide;
-
-  if (!conmutatorMode) {
-    if (posSide === 'FLAT' || state === 'READY') {
-      conmutatorMode = 'SEED';
-      resolvedSide = resolvedSide || 'BUY';
-    } else if (posSide === 'LONG') {
-      if (state === 'FLIP_CONMUTATED' || currMetric >= reqMetric) {
-        conmutatorMode = 'FLIP_SELL';
-        resolvedSide = 'SELL';
-      } else {
-        conmutatorMode = 'TREND_BUY';
-        resolvedSide = 'BUY';
-      }
-    } else {
-      // SHORT
-      if (state === 'FLIP_CONMUTATED' || currMetric >= reqMetric) {
-        conmutatorMode = 'FLIP_BUY';
-        resolvedSide = 'BUY';
-      } else {
-        conmutatorMode = 'TREND_SELL';
-        resolvedSide = 'SELL';
-      }
-    }
-  }
-
-  if (!resolvedSide) {
-    if (
-      conmutatorMode === 'TREND_BUY' ||
-      conmutatorMode === 'FLIP_BUY' ||
-      conmutatorMode === 'SEED'
-    ) {
-      resolvedSide = 'BUY';
-    } else {
-      resolvedSide = 'SELL';
-    }
-  }
+  const currentPrice = raw.current_price && raw.current_price > 0 ? raw.current_price : ctx?.latestPrice || 0;
+  const entryPrice = raw.entry_price && raw.entry_price > 0 ? raw.entry_price : currentPrice;
 
   return {
     instance_id: instanceId,
     symbol: symbol,
-    strategy: strategy,
+    strategy: raw.strategy || 'GRID_POSITION_FLIPPER',
     condition_name: raw.condition_name || 'PULLBACK_CONMUTATOR',
-    state: state,
-    conmutator_mode: conmutatorMode,
-    resolved_side: resolvedSide,
-    position_side: posSide,
+    state: (raw.state as TriggerState) || 'READY',
+    conmutator_mode: (raw.conmutator_mode as ConmutatorMode) || 'SEED',
+    resolved_side: (raw.resolved_side as ResolvedSide) || 'BUY',
+    position_side: (raw.position_side as PositionSide) || 'FLAT',
     entry_price: entryPrice,
     current_price: currentPrice,
-    trigger_price: triggerPrice,
-    actual_pullback_pc: raw.actual_pullback_pc,
-    required_pullback_pc: raw.required_pullback_pc,
-    current_metric_pc: currMetric,
-    required_metric_pc: reqMetric,
-    delta_remaining_pc: deltaRem,
-    multiplier: raw.multiplier || 3.0,
+    trigger_price: Number(raw.trigger_price || entryPrice),
+    current_metric_pc: Number(raw.current_metric_pc ?? 0.0),
+    required_metric_pc: Number(raw.required_metric_pc ?? 0.0),
+    delta_remaining_pc: Number(raw.delta_remaining_pc ?? 0.0),
+    multiplier: Number(raw.multiplier ?? 1.0),
     timestamp: raw.timestamp || new Date().toISOString(),
-    updated_at: raw.updated_at || Date.now() / 1000,
+    updated_at: Number(raw.updated_at ?? Date.now() / 1000),
   };
 }
 
 /**
- * Live tick update handler: recalculates adverse pullback, delta remaining, and dynamic mode.
+ * Live tick update handler (Dummy UI):
+ * Updates the current market price for 50.0% viewport centering and visual delta
+ * without modifying backend-governed state machines or conmutator modes.
  */
 export function computeLiveTickUpdate(
   current: StrategyTriggerStatus,
@@ -158,13 +97,10 @@ export function computeLiveTickUpdate(
   const latestPrice = (bid + ask) / 2 || bid;
   if (!latestPrice || latestPrice <= 0) return current;
 
-  const updated: StrategyTriggerStatus = { ...current };
-  updated.current_price = latestPrice;
+  const updated: StrategyTriggerStatus = { ...current, current_price: latestPrice };
 
   if (updated.entry_price > 0 && updated.position_side !== 'FLAT') {
-    const reqMetric = updated.required_metric_pc || 0.75;
     let adversePullbackPc = 0;
-
     if (updated.position_side === 'LONG') {
       adversePullbackPc = ((updated.entry_price - latestPrice) / updated.entry_price) * 100;
     } else if (updated.position_side === 'SHORT') {
@@ -172,17 +108,7 @@ export function computeLiveTickUpdate(
     }
 
     updated.current_metric_pc = adversePullbackPc;
-    updated.delta_remaining_pc = Math.max(0, reqMetric - updated.current_metric_pc);
-
-    if (updated.current_metric_pc >= reqMetric) {
-      updated.state = 'FLIP_CONMUTATED';
-      updated.conmutator_mode = updated.position_side === 'LONG' ? 'FLIP_SELL' : 'FLIP_BUY';
-      updated.resolved_side = updated.position_side === 'LONG' ? 'SELL' : 'BUY';
-    } else {
-      updated.state = 'TREND_ACCUMULATION';
-      updated.conmutator_mode = updated.position_side === 'LONG' ? 'TREND_BUY' : 'TREND_SELL';
-      updated.resolved_side = updated.position_side === 'LONG' ? 'BUY' : 'SELL';
-    }
+    updated.delta_remaining_pc = Math.max(0, updated.required_metric_pc - adversePullbackPc);
   }
 
   return updated;
