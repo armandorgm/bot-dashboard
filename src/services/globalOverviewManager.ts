@@ -14,9 +14,14 @@ export class GlobalOverviewManager {
   private viewMode: 'home' | 'dashboard' = 'home';
   private callbacks?: OverviewCallbacks;
   private isDelegationInitialized = false;
+  private cachedOverviewData: GlobalOverviewResponse | null = null;
 
   public getViewMode(): 'home' | 'dashboard' {
     return this.viewMode;
+  }
+
+  public getCachedOverviewData(): GlobalOverviewResponse | null {
+    return this.cachedOverviewData;
   }
 
   public setCallbacks(callbacks: OverviewCallbacks): void {
@@ -118,6 +123,7 @@ export class GlobalOverviewManager {
                   used_capital: typeof liveTele.used_capital === 'number' ? liveTele.used_capital : inst.used_capital,
                   allocated_capital: typeof liveTele.allocated_capital === 'number' ? liveTele.allocated_capital : inst.allocated_capital,
                   unrealized_pnl: typeof liveTele.unrealized_pnl === 'number' ? liveTele.unrealized_pnl : inst.unrealized_pnl,
+                  session_unrealized_pnl: typeof liveTele.session_unrealized_pnl === 'number' ? liveTele.session_unrealized_pnl : inst.session_unrealized_pnl,
                   status: liveTele.status || inst.status,
                 };
               }
@@ -126,6 +132,7 @@ export class GlobalOverviewManager {
           }
         }
 
+        this.cachedOverviewData = data;
         this.renderGlobalOverview(data);
         return data;
       } else {
@@ -140,6 +147,54 @@ export class GlobalOverviewManager {
       }
     }
     return null;
+  }
+
+  /**
+   * Updates real-time metrics for a specific instance in the overview matrix and recalculates totals.
+   */
+  public updateInstanceMetrics(
+    instanceId: number,
+    unrealizedPnL: number,
+    sessionUnrealizedPnL?: number,
+    usedCapital?: number,
+    lifetimePnL?: number
+  ): void {
+    if (!this.cachedOverviewData || !this.cachedOverviewData.instances) return;
+
+    let modified = false;
+    this.cachedOverviewData.instances = this.cachedOverviewData.instances.map((inst) => {
+      if (inst.id === instanceId) {
+        modified = true;
+        return {
+          ...inst,
+          unrealized_pnl: unrealizedPnL,
+          session_unrealized_pnl: sessionUnrealizedPnL !== undefined ? sessionUnrealizedPnL : inst.session_unrealized_pnl,
+          used_capital: usedCapital !== undefined ? usedCapital : inst.used_capital,
+          lifetime_pnl: lifetimePnL !== undefined ? lifetimePnL : inst.lifetime_pnl,
+        };
+      }
+      return inst;
+    });
+
+    if (modified) {
+      // Recalculate portfolio-level unrealized totals
+      let totalUnrealized = 0;
+      let totalSessionUnrealized = 0;
+      for (const inst of this.cachedOverviewData.instances) {
+        totalUnrealized += inst.unrealized_pnl || 0;
+        if (inst.session_unrealized_pnl !== undefined && inst.session_unrealized_pnl !== null) {
+          totalSessionUnrealized += inst.session_unrealized_pnl;
+        }
+      }
+
+      this.cachedOverviewData.portfolio_summary.total_unrealized_pnl = totalUnrealized;
+      this.cachedOverviewData.portfolio_summary.total_session_unrealized_pnl = totalSessionUnrealized;
+
+      // Re-render if home overview page is visible
+      if (this.viewMode === 'home') {
+        this.renderGlobalOverview(this.cachedOverviewData);
+      }
+    }
   }
 
   public renderGlobalOverview(data: GlobalOverviewResponse): void {

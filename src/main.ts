@@ -160,14 +160,26 @@ const marketFeed = new MarketFeedService({
         sessionStartTimeMap.set(targetInstId, parsedTs);
       }
     }
-    const latestBid = history.length > 0 ? history[history.length - 1].bid : 0;
-    const latestAsk = history.length > 0 ? history[history.length - 1].ask : 0;
-    updatePnLDisplay(latestBid, latestAsk);
+    updatePnLDisplay();
   },
   onInstanceTelemetry: (d) => {
     const currentSelected = instanceService.getSelectedInstanceId();
     const currentTargetId =
       currentSelected !== null ? currentSelected : parseInt(config.instance_id || '1', 10);
+    const eventInstId = d.instance_id !== undefined ? Number(d.instance_id) : currentTargetId;
+
+    // Sincronizar matriz global command center
+    if (typeof d.unrealized_pnl === 'number' || typeof d.used_capital === 'number' || typeof d.lifetime_pnl === 'number') {
+      globalOverviewManager.updateInstanceMetrics(
+        eventInstId,
+        typeof d.unrealized_pnl === 'number' ? d.unrealized_pnl : 0,
+        d.session_unrealized_pnl,
+        d.used_capital,
+        d.lifetime_pnl ?? d.total_pnl ?? d.realized_pnl
+      );
+    }
+
+    // Actualizar dashboard de la instancia activa seleccionada
     if (d.instance_id === undefined || String(d.instance_id) === String(currentTargetId)) {
       instanceService.updateInstanceCapitalDisplay(d.used_capital, d.allocated_capital, d.available_capital);
       const pnlVal = d.lifetime_pnl ?? d.total_pnl ?? d.realized_pnl;
@@ -175,9 +187,33 @@ const marketFeed = new MarketFeedService({
         const inst = instanceService.findInstance(currentTargetId);
         if (inst) inst.lifetime_pnl = pnlVal;
       }
-      const latestBid = history.length > 0 ? history[history.length - 1].bid : 0;
-      const latestAsk = history.length > 0 ? history[history.length - 1].ask : 0;
-      updatePnLDisplay(latestBid, latestAsk);
+      if (typeof d.unrealized_pnl === 'number') {
+        sessionMetrics.setUnrealizedPnL(d.unrealized_pnl, d.session_unrealized_pnl || 0, currentTargetId);
+      }
+      updatePnLDisplay();
+    }
+  },
+  onPositionMetricsUpdate: (d) => {
+    const currentSelected = instanceService.getSelectedInstanceId();
+    const currentTargetId =
+      currentSelected !== null ? currentSelected : parseInt(config.instance_id || '1', 10);
+    const eventInstId = d && d.instance_id !== undefined ? Number(d.instance_id) : currentTargetId;
+
+    // Sincronizar matriz global command center
+    if (d && typeof d.unrealized_pnl === 'number') {
+      globalOverviewManager.updateInstanceMetrics(
+        eventInstId,
+        d.unrealized_pnl,
+        d.session_unrealized_pnl
+      );
+    }
+
+    // Actualizar dashboard de la instancia activa seleccionada
+    if (d && (d.instance_id === undefined || String(d.instance_id) === String(currentTargetId))) {
+      if (typeof d.unrealized_pnl === 'number') {
+        sessionMetrics.setUnrealizedPnL(d.unrealized_pnl, d.session_unrealized_pnl || 0, currentTargetId);
+        updatePnLDisplay();
+      }
     }
   },
   onBalanceUpdate: (balanceData) => {
@@ -417,21 +453,18 @@ function initBalanceModalListeners(): void {
   }
 }
 
-// ── PnL and Metrics Display Coordination ────────────────────────────────────
-
-function updatePnLDisplay(currentBid: number, currentAsk: number) {
+function updatePnLDisplay(_currentBid?: number, _currentAsk?: number) {
   const currentSelected = instanceService.getSelectedInstanceId();
   const targetInstId = currentSelected !== null ? currentSelected : parseInt(config.instance_id || '1', 10);
   const realizedPnL = sessionMetrics.getRealizedPnL(targetInstId);
-  const startTimeMs = sessionStartTimeMap.get(targetInstId);
-  const unrealizedPnL = sessionMetrics.calculateUnrealizedPnL(currentBid, currentAsk, config.symbol, targetInstId, startTimeMs);
+  const sessionUnrealizedPnL = sessionMetrics.getSessionUnrealizedPnL(targetInstId);
+  const totalInstanceUnrealized = sessionMetrics.getUnrealizedPnL(targetInstId);
 
   const loadedInsts = instanceService.getLoadedInstances();
   const currentInstDataForNet = loadedInsts.find((i) => i.id === targetInstId);
   const instanceLifetimeRealized = currentInstDataForNet ? currentInstDataForNet.lifetime_pnl || 0 : realizedPnL;
-  const totalInstanceUnrealized = sessionMetrics.calculateUnrealizedPnL(currentBid, currentAsk, config.symbol, targetInstId);
 
-  const sessionNetTotal = realizedPnL + unrealizedPnL;
+  const sessionNetTotal = realizedPnL + sessionUnrealizedPnL;
   const instanceLifetimeNetTotal = instanceLifetimeRealized + totalInstanceUnrealized;
 
   const sessionStartMs = sessionStartTimeMap.get(targetInstId) || Date.now();
@@ -451,7 +484,7 @@ function updatePnLDisplay(currentBid: number, currentAsk: number) {
   // Dispatch to batched dirty-checking display controller
   metricsDisplayController.setPnLState({
     realizedPnL,
-    unrealizedPnL,
+    unrealizedPnL: sessionUnrealizedPnL,
     lifetimeRealized: instanceLifetimeRealized,
     lifetimeUnrealized: totalInstanceUnrealized,
     sessionNetTotal,
@@ -502,26 +535,6 @@ function processActivePipelinesData(data: ChasePipelineProcess[], rawText?: stri
   data.forEach((proc) => {
     if (proc.status !== 'COMPLETED' && proc.status !== 'ABORTED') {
       trackedSessionProcessIds.add(proc.id);
-      const isPositionOpen = proc.status === 'WAITING_TP_FILL' || Boolean(proc.exit_order_id);
-      const entryPrice = proc.last_order_price || proc.initial_price || 0;
-      if (isPositionOpen && entryPrice > 0) {
-        let procCreatedAt = Date.now();
-        if (proc.created_at) {
-          const rawStr = String(proc.created_at);
-          const isoStr = rawStr.endsWith('Z') ? rawStr : rawStr + 'Z';
-          const parsed = new Date(isoStr).getTime();
-          if (!isNaN(parsed)) procCreatedAt = parsed;
-        }
-        sessionMetrics.registerPosition({
-          processId: proc.id,
-          instanceId: proc.instance_id,
-          symbol: proc.symbol,
-          entryPrice: entryPrice,
-          amount: proc.amount || 0,
-          side: proc.side || 'BUY',
-          createdAt: procCreatedAt,
-        });
-      }
     }
   });
 
@@ -531,20 +544,10 @@ function processActivePipelinesData(data: ChasePipelineProcess[], rawText?: stri
       completedSessionProcessIds.add(procId);
       trackedSessionProcessIds.delete(procId);
 
-      const pos = sessionMetrics.closePosition(procId);
-      const entryPrice = pos ? pos.entryPrice : proc.initial_price || proc.last_order_price || 0;
+      const entryPrice = proc.initial_price || proc.last_order_price || 0;
       const exitPrice = proc.last_tick_price || proc.last_order_price || entryPrice;
-      const amount = pos ? pos.amount : proc.amount || 1;
-      const side = pos ? pos.side : proc.side || 'BUY';
-
-      const isLong = side.toUpperCase() === 'BUY' || side.toUpperCase() === 'LONG';
-      const priceDiff = isLong ? exitPrice - entryPrice : entryPrice - exitPrice;
-      const tradePnL = priceDiff * amount;
-
-      const currentSelected = instanceService.getSelectedInstanceId();
-      const procInstId = proc.instance_id || (currentSelected !== null ? currentSelected : parseInt(config.instance_id || '1', 10));
-      sessionMetrics.addRealizedPnL(tradePnL, procInstId);
-      addLog(`[SESSION PnL] Process #${procId} (Inst #${procInstId}) COMPLETED. Trade PnL: $${tradePnL.toFixed(4)}`, tradePnL >= 0 ? 'success' : 'warn');
+      const amount = proc.amount || 1;
+      const side = proc.side || 'BUY';
 
       let anchorX = canvasEl ? canvasEl.width * 0.5 : 200;
       let anchorY = canvasEl ? canvasEl.height * 0.5 : 150;
@@ -571,9 +574,7 @@ function processActivePipelinesData(data: ChasePipelineProcess[], rawText?: stri
     }
   }
 
-  const latestBid = history.length > 0 ? history[history.length - 1].bid : 0;
-  const latestAsk = history.length > 0 ? history[history.length - 1].ask : 0;
-  updatePnLDisplay(latestBid, latestAsk);
+  updatePnLDisplay();
 
   chartRenderer.draw();
   triggerGaugeManager.requestRender();
@@ -747,7 +748,6 @@ function switchActiveInstance(instanceId: string | number) {
   history = [];
   hftEvents = [];
   activeChaseProcesses = [];
-  sessionMetrics.resetPositions();
   chartRenderer.draw();
 
   instanceService.updateInstanceStatusToggleUI(target.status);

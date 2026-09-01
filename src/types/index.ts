@@ -189,6 +189,9 @@ export interface InstanceTelemetry {
   total_open_orders?: number;
   realized_pnl?: number;
   unrealized_pnl?: number;
+  session_unrealized_pnl?: number;
+  net_total_pnl?: number;
+  session_net?: number;
   lifetime_pnl?: number;
   total_pnl?: number;
   trigger_status?: StrategyTriggerStatus;

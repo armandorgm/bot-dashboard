@@ -14,6 +14,7 @@ export interface MarketFeedCallbacks {
   onInstanceTelemetry: (data: any) => void;
   onBalanceUpdate?: (balance: any) => void;
   onStrategyTriggerStatus?: (status: StrategyTriggerStatus) => void;
+  onPositionMetricsUpdate?: (data: any) => void;
   onHftEvent: (evt: HftEvent) => void;
   onOpenOrdersRequested: () => void;
   onActivePipelinesRequested: () => void;
@@ -196,8 +197,6 @@ export class MarketFeedService {
               detail: `Failed cancellation: ${d.error || 'Unknown error'}`,
             });
 
-            addLog(`[CANCEL ERROR] Failed to cancel order #${orderId}: ${d.error || 'Unknown error'}`, 'err');
-          } else {
             this.callbacks.onHftEvent({
               e: 'HFT_EVENT',
               type: 'query',
@@ -209,6 +208,10 @@ export class MarketFeedService {
             if (d.is_error) {
               addLog(`[QUERY ERROR] ${d.method} failed: ${d.error || 'Unknown error'}`, 'err');
             }
+          }
+        } else if (payload.type === 'position_metrics_update' && payload.data) {
+          if (this.callbacks.onPositionMetricsUpdate) {
+            this.callbacks.onPositionMetricsUpdate(payload.data);
           }
         } else if (payload.type === 'ws_log' && payload.data) {
           const d = payload.data;
