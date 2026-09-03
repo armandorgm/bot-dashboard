@@ -71,6 +71,12 @@ export class InstanceService {
     }
   }
 
+  private onTelemetryUpdatedCallback?: (telemetry: InstanceTelemetry, targetId: number) => void;
+
+  public setOnTelemetryUpdated(cb: (telemetry: InstanceTelemetry, targetId: number) => void): void {
+    this.onTelemetryUpdatedCallback = cb;
+  }
+
   public async fetchInstanceTelemetry(targetId: number | string, _parentPort?: string): Promise<InstanceTelemetry | null> {
     try {
       const res = await apiClient.get<InstanceTelemetry>(`/api/grid/instances/${targetId}/telemetry`);
@@ -89,6 +95,11 @@ export class InstanceService {
         if (match && pnlVal !== undefined) {
           match.lifetime_pnl = pnlVal;
         }
+
+        if (this.onTelemetryUpdatedCallback) {
+          this.onTelemetryUpdatedCallback(telemetry, Number(targetId));
+        }
+
         return telemetry;
       } else {
         const match = this.loadedInstances.find((i) => String(i.id) === String(targetId));

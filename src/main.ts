@@ -1102,6 +1102,16 @@ window.addEventListener('DOMContentLoaded', async () => {
     onSwitchInstance: (id) => switchActiveInstance(id),
   });
   instanceNavigationManager.init();
+  instanceService.setOnTelemetryUpdated((telemetry, instId) => {
+    if (typeof telemetry.unrealized_pnl === 'number') {
+      sessionMetrics.setUnrealizedPnL(telemetry.unrealized_pnl, telemetry.session_unrealized_pnl || 0, instId);
+    }
+    const currentSelected = instanceService.getSelectedInstanceId();
+    const currentTargetId = currentSelected !== null ? currentSelected : parseInt(config.instance_id || '1', 10);
+    if (instId === currentTargetId) {
+      updatePnLDisplay();
+    }
+  });
   instanceService.initModalListeners(undefined, (id) => switchActiveInstance(id));
   globalOverviewManager.setViewMode('home', () => chartRenderer.handleResize());
 
