@@ -19,6 +19,7 @@ import {
   getConmutatorModeBadgeInfo,
   getMetricColor,
   getPoiVisualConfig,
+  getProcessSpanTheme,
 } from './triggerGaugeTheme';
 import {
   computeLiveTickUpdate,
@@ -126,6 +127,10 @@ export class TriggerGaugeManager {
 
   public getPoiVisualConfig(category: any, side?: string) {
     return getPoiVisualConfig(category, side);
+  }
+
+  public getProcessSpanTheme(side: string, status?: string, isVirtualExit?: boolean) {
+    return getProcessSpanTheme(side, status, isVirtualExit);
   }
 
   public getCompactStatusBadgeHtml(s?: StrategyTriggerStatus): string {

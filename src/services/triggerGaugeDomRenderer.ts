@@ -1,7 +1,7 @@
 import { ProcessRangeSpan, StrategyTriggerStatus, TacticalCluster, TacticalProcessGap } from '../types';
 import { formatNum, getSymbolDecimals } from '../utils/formatters';
 import { FRAME_BUDGET_MS } from '../utils/constants';
-import { getConmutatorModeBadgeInfo, getMetricColor, getPoiVisualConfig } from './triggerGaugeTheme';
+import { getConmutatorModeBadgeInfo, getMetricColor, getPoiVisualConfig, getProcessSpanTheme } from './triggerGaugeTheme';
 import { calculateLogCoordinate, calculateProcessGaps, calculateViewportExtrema, projectAndAssignLanes } from './triggerGaugeMath';
 import { tooltipManager } from './tooltipManager';
 
@@ -498,15 +498,19 @@ export class TriggerGaugeDomRenderer {
       activeIds.add(span.id);
       const existingEl = existingElements.get(span.id);
       const topPx = 6 + span.lane * 24;
+      const spanTheme = getProcessSpanTheme(span.side, span.status, span.isVirtualExit);
 
       if (existingEl) {
         existingEl.style.left = `${span.xLeft}%`;
         existingEl.style.width = `${span.widthPc}%`;
         existingEl.style.top = `${topPx}px`;
+        if (existingEl.className !== spanTheme.className) {
+          existingEl.className = spanTheme.className;
+        }
       } else {
         const newEl = document.createElement('div');
         newEl.setAttribute('data-span-id', span.id);
-        newEl.className = `tactical-process-span ${span.side.toLowerCase()}`;
+        newEl.className = spanTheme.className;
         newEl.style.left = `${span.xLeft}%`;
         newEl.style.width = `${span.widthPc}%`;
         newEl.style.top = `${topPx}px`;
@@ -573,18 +577,23 @@ export class TriggerGaugeDomRenderer {
   }
 
   public getSpanTooltipHtml(span: ProcessRangeSpan, decimals: number, _marketPrice?: number): string {
-    const isBuy = span.side === 'BUY';
-    const sideColor = isBuy ? '#10b981' : '#ef4444';
-    const sideBg = isBuy ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)';
-    const sideBorder = isBuy ? '#10b981' : '#ef4444';
+    const spanTheme = getProcessSpanTheme(span.side, span.status, span.isVirtualExit);
+    const sideColor = spanTheme.color;
+    const sideBg = spanTheme.isVirtual ? 'rgba(14, 165, 233, 0.2)' : span.side === 'BUY' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+    const sideBorder = spanTheme.border;
+    const statusLabel = spanTheme.isVirtual ? 'ESPERANDO SALIDA VIRTUAL' : span.status;
 
     return `
       <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.4;">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 4px; margin-bottom: 6px;">
           <span style="font-weight: 800; color: ${sideColor};">PROCESO #${span.processId} (${span.side})</span>
-          <span style="background: ${sideBg}; color: ${sideColor}; border: 1px solid ${sideBorder}; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: bold;">${span.status}</span>
+          <span style="background: ${sideBg}; color: ${sideColor}; border: 1px solid ${sideBorder}; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: bold;">${statusLabel}</span>
         </div>
         <table style="width: 100%; border-collapse: collapse; font-size: 10px; color: #cbd5e1;">
+          <tr>
+            <td style="color: #64748b; padding-right: 6px; width: 65px;">Estado:</td>
+            <td style="color: #f1f5f9; font-weight: 600;">${span.status}</td>
+          </tr>
           <tr>
             <td style="color: #64748b; padding-right: 6px; width: 65px;">Inicio:</td>
             <td style="color: #38bdf8; font-weight: 600;">$${formatNum(span.startPrice, decimals)}</td>

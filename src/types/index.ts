@@ -112,6 +112,9 @@ export interface ProcessRangeSpan {
   minPrice: number;
   maxPrice: number;
   status: string;
+  subStatus?: string;
+  exitOrderId?: string;
+  isVirtualExit?: boolean;
   amount: number;
   xStart: number;
   xEnd: number;

@@ -1642,27 +1642,66 @@ body {
   pointer-events: auto;
   user-select: none;
   z-index: 4;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, z-index 0.15s ease;
+  transition: background 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease, color 0.35s ease, transform 0.15s ease, z-index 0.15s ease;
 }
 
 .tactical-process-span.buy {
-  background: linear-gradient(90deg, rgba(16, 185, 129, 0.35) 0%, rgba(16, 185, 129, 0.75) 100%);
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.45) 0%, rgba(16, 185, 129, 0.85) 100%);
   border: 1px solid #10b981;
   color: #ffffff;
   box-shadow: 0 0 8px rgba(16, 185, 129, 0.35);
 }
 
 .tactical-process-span.sell {
-  background: linear-gradient(90deg, rgba(239, 68, 68, 0.35) 0%, rgba(239, 68, 68, 0.75) 100%);
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.45) 0%, rgba(239, 68, 68, 0.85) 100%);
   border: 1px solid #ef4444;
   color: #ffffff;
   box-shadow: 0 0 8px rgba(239, 68, 68, 0.35);
 }
 
+.tactical-process-span.virtual_watching,
+.tactical-process-span.virtual,
+.tactical-process-span.waiting_exit_fill {
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
+}
+
+.tactical-process-span.buy.virtual_watching,
+.tactical-process-span.buy.virtual,
+.tactical-process-span.buy.waiting_exit_fill {
+  /* BUY: Entrada Verde en izquierda (0%) ➔ Salida Virtual Azul en derecha (100%) - Fondo Semitransparente */
+  background: linear-gradient(90deg, 
+    rgba(16, 185, 129, 0.50) 0%, 
+    rgba(16, 185, 129, 0.30) 35%, 
+    rgba(14, 165, 233, 0.30) 65%, 
+    rgba(56, 189, 248, 0.50) 100%
+  ) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-left: 2px solid #10b981 !important;
+  border-right: 2px solid #38bdf8 !important;
+}
+
+.tactical-process-span.sell.virtual_watching,
+.tactical-process-span.sell.virtual,
+.tactical-process-span.sell.waiting_exit_fill {
+  /* SELL: Salida Virtual Azul en izquierda (0%) ➔ Entrada Roja en derecha (100%) - Horizontalmente Inversa */
+  background: linear-gradient(90deg, 
+    rgba(56, 189, 248, 0.50) 0%, 
+    rgba(14, 165, 233, 0.30) 35%, 
+    rgba(239, 68, 68, 0.30) 65%, 
+    rgba(239, 68, 68, 0.55) 100%
+  ) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-left: 2px solid #38bdf8 !important;
+  border-right: 2px solid #ef4444 !important;
+}
+
 .tactical-process-span:hover {
   transform: translateY(-2px) scale(1.02);
   z-index: 12 !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.8), 0 0 12px currentColor !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.8), 0 0 10px rgba(56, 189, 248, 0.4) !important;
 }
 
 .tactical-span-content {
@@ -1677,17 +1716,35 @@ body {
 
 .tactical-span-badge {
   font-weight: 800;
-  padding: 0 3px;
+  padding: 0 4px;
   border-radius: 2px;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.55);
   font-size: 0.58rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  letter-spacing: 0.3px;
+}
+
+.tactical-process-span.buy.virtual_watching .tactical-span-badge,
+.tactical-process-span.buy.waiting_exit_fill .tactical-span-badge {
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.6);
+  background: rgba(6, 78, 59, 0.75);
+}
+
+.tactical-process-span.sell.virtual_watching .tactical-span-badge,
+.tactical-process-span.sell.waiting_exit_fill .tactical-span-badge {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.6);
+  background: rgba(127, 29, 29, 0.75);
 }
 
 .tactical-span-range {
   font-size: 0.58rem;
-  opacity: 0.9;
+  font-weight: 700;
+  opacity: 0.95;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 
 /* INTER-PROCESS DISTANCE GAPS (EDGE-TO-EDGE) */

@@ -144,6 +144,14 @@ export function extractProcessSpans(
           const minPrice = Math.min(startPrice, endPrice);
           const maxPrice = Math.max(startPrice, endPrice);
           const diffPc = Math.abs(((endPrice - startPrice) / startPrice) * 100);
+          const isVirtual =
+            p.status === 'VIRTUAL_WATCHING' ||
+            p.status === 'VIRTUAL' ||
+            p.status === 'VIRTUAL_EXIT' ||
+            p.sub_status === 'VIRTUAL_WATCHING' ||
+            p.sub_status === 'VIRTUAL' ||
+            ((p.status === 'WAITING_EXIT_FILL' || p.status === 'WAITING_TP_FILL' || p.status === 'WATCHING_TP') &&
+              (!p.exit_order_id || p.exit_order_id === 'None' || p.exit_order_id === 'null'));
 
           spans.push({
             id: `proc-span-${p.id}`,
@@ -155,6 +163,9 @@ export function extractProcessSpans(
             minPrice: minPrice,
             maxPrice: maxPrice,
             status: p.status,
+            subStatus: p.sub_status,
+            exitOrderId: p.exit_order_id,
+            isVirtualExit: isVirtual,
             amount: p.amount || 0,
             xStart: 0,
             xEnd: 0,

@@ -398,8 +398,16 @@ export class ChartRenderer {
         ctx.save();
         const isChasing = proc.status === 'CHASING';
         const isWaiting = proc.status === 'WAITING_FILL';
+        const isVirtual =
+          proc.status === 'VIRTUAL_WATCHING' ||
+          proc.status === 'VIRTUAL' ||
+          proc.status === 'VIRTUAL_EXIT' ||
+          proc.sub_status === 'VIRTUAL_WATCHING' ||
+          proc.sub_status === 'VIRTUAL' ||
+          ((proc.status === 'WAITING_EXIT_FILL' || proc.status === 'WAITING_TP_FILL') &&
+            (!proc.exit_order_id || proc.exit_order_id === 'None' || proc.exit_order_id === 'null'));
 
-        const lineColor = isChasing ? '#f59e0b' : isWaiting ? '#06b6d4' : '#10b981';
+        const lineColor = isVirtual ? '#38bdf8' : isChasing ? '#f59e0b' : isWaiting ? '#06b6d4' : '#10b981';
         ctx.strokeStyle = lineColor;
         ctx.lineWidth = 1.8;
         ctx.setLineDash([5, 4]);

@@ -19,6 +19,68 @@ export interface PoiVisualConfig {
   icon: string;
 }
 
+export interface ProcessSpanTheme {
+  color: string;
+  bg: string;
+  border: string;
+  className: string;
+  isVirtual: boolean;
+}
+
+/**
+ * Determine theme and visual styling for a Process Range Span (SOLID SSOT).
+ * Supports graceful color transition to Azure/Neon Blue for processes awaiting virtual exit (VIRTUAL_WATCHING).
+ */
+export function getProcessSpanTheme(
+  side: string,
+  status?: string,
+  isVirtualExit?: boolean
+): ProcessSpanTheme {
+  const normStatus = (status || '').toUpperCase();
+  const isVirtual =
+    isVirtualExit !== undefined
+      ? Boolean(isVirtualExit)
+      : normStatus === 'VIRTUAL_WATCHING' ||
+        normStatus === 'VIRTUAL' ||
+        normStatus === 'VIRTUAL_EXIT' ||
+        normStatus === 'WAITING_EXIT_FILL' ||
+        normStatus === 'WAITING_TP_FILL' ||
+        normStatus === 'WATCHING_TP';
+  const isBuy = (side || 'BUY').toUpperCase() === 'BUY';
+
+  if (isVirtual) {
+    const virtualBg = isBuy
+      ? 'linear-gradient(90deg, rgba(16, 185, 129, 0.50) 0%, rgba(16, 185, 129, 0.30) 35%, rgba(14, 165, 233, 0.30) 65%, rgba(56, 189, 248, 0.50) 100%)'
+      : 'linear-gradient(90deg, rgba(56, 189, 248, 0.50) 0%, rgba(14, 165, 233, 0.30) 35%, rgba(239, 68, 68, 0.30) 65%, rgba(239, 68, 68, 0.55) 100%)';
+
+    return {
+      color: '#38bdf8', // Azure / Neon Sky Blue
+      bg: virtualBg,
+      border: '#38bdf8',
+      className: `tactical-process-span ${isBuy ? 'buy' : 'sell'} virtual_watching waiting_exit_fill`,
+      isVirtual: true,
+    };
+  }
+
+  if (isBuy) {
+    return {
+      color: '#10b981', // Emerald Green
+      bg: 'linear-gradient(90deg, rgba(16, 185, 129, 0.35) 0%, rgba(16, 185, 129, 0.75) 100%)',
+      border: '#10b981',
+      className: 'tactical-process-span buy',
+      isVirtual: false,
+    };
+  }
+
+  return {
+    color: '#ef4444', // Coral Red
+    bg: 'linear-gradient(90deg, rgba(239, 68, 68, 0.35) 0%, rgba(239, 68, 68, 0.75) 100%)',
+    border: '#ef4444',
+    className: 'tactical-process-span sell',
+    isVirtual: false,
+  };
+}
+
 /**
  * Determine color theme based on v2.2.0 Conmutator Mode & State
  */

@@ -553,6 +553,79 @@ export function runTriggerGaugeVerification(): boolean {
     throw new Error(`Failed getGapTooltipHtml check: got ${gapTooltipHtml}`);
   }
 
+  // 22. VIRTUAL EXIT / VIRTUAL_WATCHING PROCESS SPAN THEME & SSOT VERIFICATION
+  const virtualSpanThemeBuy = manager.getProcessSpanTheme('BUY', 'VIRTUAL_WATCHING');
+  if (
+    !virtualSpanThemeBuy.isVirtual ||
+    virtualSpanThemeBuy.color !== '#38bdf8' ||
+    !virtualSpanThemeBuy.className.includes('virtual_watching') ||
+    !virtualSpanThemeBuy.className.includes('buy') ||
+    !virtualSpanThemeBuy.bg.includes('16, 185, 129') ||
+    !virtualSpanThemeBuy.bg.includes('56, 189, 248')
+  ) {
+    throw new Error(`Failed virtualSpanThemeBuy check: ${JSON.stringify(virtualSpanThemeBuy)}`);
+  }
+
+  const virtualSpanThemeSell = manager.getProcessSpanTheme('SELL', 'VIRTUAL_WATCHING');
+  if (
+    !virtualSpanThemeSell.isVirtual ||
+    virtualSpanThemeSell.color !== '#38bdf8' ||
+    !virtualSpanThemeSell.className.includes('virtual_watching') ||
+    !virtualSpanThemeSell.className.includes('sell') ||
+    !virtualSpanThemeSell.bg.includes('239, 68, 68') ||
+    !virtualSpanThemeSell.bg.includes('56, 189, 248')
+  ) {
+    throw new Error(`Failed virtualSpanThemeSell check: ${JSON.stringify(virtualSpanThemeSell)}`);
+  }
+
+  // WAITING_EXIT_FILL with default/fallback and explicit isVirtualExit
+  const waitingExitDefaultTheme = manager.getProcessSpanTheme('BUY', 'WAITING_EXIT_FILL');
+  if (!waitingExitDefaultTheme.isVirtual || waitingExitDefaultTheme.color !== '#38bdf8') {
+    throw new Error(`Failed waitingExitDefaultTheme check: ${JSON.stringify(waitingExitDefaultTheme)}`);
+  }
+
+  const waitingExitExplicitPhysicalTheme = manager.getProcessSpanTheme('BUY', 'WAITING_EXIT_FILL', false);
+  if (waitingExitExplicitPhysicalTheme.isVirtual || waitingExitExplicitPhysicalTheme.color !== '#10b981') {
+    throw new Error(`Failed waitingExitExplicitPhysicalTheme check: ${JSON.stringify(waitingExitExplicitPhysicalTheme)}`);
+  }
+
+  const standardBuyTheme = manager.getProcessSpanTheme('BUY', 'CHASING');
+  if (standardBuyTheme.isVirtual || standardBuyTheme.color !== '#10b981' || standardBuyTheme.className !== 'tactical-process-span buy') {
+    throw new Error(`Failed standardBuyTheme check: ${JSON.stringify(standardBuyTheme)}`);
+  }
+
+  const standardSellTheme = manager.getProcessSpanTheme('SELL', 'CHASING');
+  if (standardSellTheme.isVirtual || standardSellTheme.color !== '#ef4444' || standardSellTheme.className !== 'tactical-process-span sell') {
+    throw new Error(`Failed standardSellTheme check: ${JSON.stringify(standardSellTheme)}`);
+  }
+
+  // 23. VIRTUAL_WATCHING / WAITING_EXIT_FILL SPAN TOOLTIP & DOM RECONCILIATION
+  const virtualSpan: any = {
+    id: 'proc-span-99',
+    processId: 99,
+    side: 'BUY' as const,
+    startPrice: 700,
+    endPrice: 710,
+    minPrice: 700,
+    maxPrice: 710,
+    status: 'WAITING_EXIT_FILL',
+    isVirtualExit: true,
+    amount: 5,
+    xStart: 0,
+    xEnd: 0,
+    xLeft: 45,
+    xRight: 55,
+    widthPc: 10,
+    lane: 0,
+    label: '#99 BUY',
+    subLabel: 'WAITING_EXIT_FILL',
+  };
+
+  const virtualTooltipHtml = manager.getSpanTooltipHtml(virtualSpan, 2, 705);
+  if (!virtualTooltipHtml.includes('ESPERANDO SALIDA VIRTUAL') || !virtualTooltipHtml.includes('#38bdf8')) {
+    throw new Error(`Failed virtualTooltipHtml check: got ${virtualTooltipHtml}`);
+  }
+
   return true;
 }
 
