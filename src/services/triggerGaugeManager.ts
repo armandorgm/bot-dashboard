@@ -149,6 +149,15 @@ export class TriggerGaugeManager {
     return extractTacticalPois(s, openOrders, activeProcesses);
   }
 
+  public projectAndAssignLanes(
+    spans: ProcessRangeSpan[],
+    marketPrice: number,
+    pMin: number,
+    pMax: number
+  ): { spans: ProcessRangeSpan[]; totalLanes: number } {
+    return projectAndAssignLanes(spans, marketPrice, pMin, pMax);
+  }
+
   public calculateViewportExtrema(
     marketPrice: number,
     triggerOrPois?: any,
@@ -165,15 +174,6 @@ export class TriggerGaugeManager {
     pMax: number
   ): number {
     return calculateLogCoordinate(price, marketPrice, pMin, pMax);
-  }
-
-  public projectAndAssignLanes(
-    spans: ProcessRangeSpan[],
-    marketPrice: number,
-    pMin: number,
-    pMax: number
-  ) {
-    return projectAndAssignLanes(spans, marketPrice, pMin, pMax);
   }
 
   public clusterPois(

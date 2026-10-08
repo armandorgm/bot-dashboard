@@ -1,4 +1,5 @@
 import { ProcessRangeSpan, TacticalCluster, TacticalPOI, TacticalProcessGap } from '../types';
+import { formatNum } from '../utils/formatters';
 
 /**
  * Pure Mathematical & Geometric Projection Engine for the Tactical Price Spectrum.
@@ -103,8 +104,22 @@ export function calculateLogCoordinate(
 }
 
 /**
- * Project Spans to X coordinates and assign Tiered Lanes (NO MERGING).
- * Spans that overlap in price intervals are stacked into distinct lanes so all remain visible.
+ * Project Spans to X coordinates and assign to a SINGLE channel/lane.
+ *
+ * Fix: Anteriormente usaba un algoritmo greedy "NO MERGING" que creaba un nuevo
+ * lane por cada overlap → escalera visual (escalada acumulativa de 24px por lane).
+ *
+ * Nueva estrategia (elimina la escalera):
+ *   1. Proyecta cada span a coordenadas X (igual que antes).
+ *   2. Ordena por xLeft ascendente.
+ *   3. FUSIÓN de spans solapados → un único span unión por cada tramo superpuesto.
+ *      Los spans fusionados preservan todos sus processId en `mergedProcessIds`.
+ *   4. Todos los spans (fusionados o no) se asignan a lane 0.
+ *
+ * Garantiza:
+ *   - El precio de entrada y salida de un mismo proceso permanecen en el MISMO nivel.
+ *   - No se crea una escalera (un solo canal vertical).
+ *   - No se crean múltiples canales.
  */
 export function projectAndAssignLanes(
   spans: ProcessRangeSpan[],
@@ -126,25 +141,57 @@ export function projectAndAssignLanes(
   // 2. Sort by xLeft ascending (if equal, wider spans first)
   spans.sort((a, b) => a.xLeft - b.xLeft || (b.xRight - b.xLeft) - (a.xRight - a.xLeft));
 
-  // 3. Assign lanes without merging
-  const laneEnds: number[] = [];
-  spans.forEach((span) => {
-    let assignedLane = -1;
-    for (let i = 0; i < laneEnds.length; i++) {
-      if (laneEnds[i] <= span.xLeft) {
-        assignedLane = i;
-        laneEnds[i] = span.xRight + 0.8;
-        break;
+  // 3. Merge overlapping spans into unions (eliminates escalera)
+  const merged: ProcessRangeSpan[] = [];
+
+  // Gap threshold in X% to consider two spans as "separated" (no merge)
+  const MERGE_GAP_TOLERANCE_PC = 0.3;
+
+  for (const span of spans) {
+    const existing =
+      merged.length > 0 &&
+      // Overlap check: existing.xRight > span.xLeft - tolerance
+      merged[merged.length - 1].xRight >= span.xLeft - MERGE_GAP_TOLERANCE_PC
+        ? merged[merged.length - 1]
+        : null;
+
+    if (existing) {
+      // Extend the union span
+      existing.xLeft = Math.min(existing.xLeft, span.xLeft);
+      existing.xRight = Math.max(existing.xRight, span.xRight);
+      existing.widthPc = Math.max(3.0, existing.xRight - existing.xLeft);
+      existing.minPrice = Math.min(existing.minPrice, span.minPrice);
+      existing.maxPrice = Math.max(existing.maxPrice, span.maxPrice);
+      existing.startPrice = Math.min(existing.startPrice, span.startPrice);
+      existing.endPrice = Math.max(existing.endPrice, span.endPrice);
+      existing.amount += span.amount || 0;
+
+      // Track merged process IDs
+      if (!existing.mergedProcessIds) {
+        existing.mergedProcessIds = [existing.processId];
       }
+      if (span.mergedProcessIds) {
+        existing.mergedProcessIds.push(...span.mergedProcessIds);
+      } else {
+        existing.mergedProcessIds.push(span.processId);
+      }
+
+      // Update label: combine all process IDs
+      const procIds = Array.from(new Set(existing.mergedProcessIds));
+      existing.label = procIds.map((id) => `#${id} ${existing.side}`).join(' + ');
+      existing.subLabel = `${existing.status} · $${formatNum(existing.startPrice, 0)} ➔ $${formatNum(existing.endPrice, 0)} | Qty: ${existing.amount}`;
+    } else {
+      // Start a new union span
+      merged.push({ ...span });
     }
-    if (assignedLane === -1) {
-      assignedLane = laneEnds.length;
-      laneEnds.push(span.xRight + 0.8);
-    }
-    span.lane = assignedLane;
+  }
+
+  // 4. Assign ALL spans to lane 0 (single channel — no escalera)
+  merged.forEach((span) => {
+    span.lane = 0;
   });
 
-  return { spans, totalLanes: Math.max(1, laneEnds.length) };
+  return { spans: merged, totalLanes: 1 };
 }
 
 /**
