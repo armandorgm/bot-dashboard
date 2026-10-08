@@ -288,14 +288,20 @@ export function runTriggerGaugeVerification(): boolean {
   ];
 
   const laneResult = manager.projectAndAssignLanes(overlappingSpans, 0.00260, 0.00250, 0.00270);
-  if (laneResult.spans.length !== 2) {
-    throw new Error(`Expected both spans preserved without merging, got ${laneResult.spans.length}`);
+  // NEW BEHAVIOR: overlapping spans MERGED into single channel (no escalera)
+  if (laneResult.spans.length !== 1) {
+    throw new Error(`Expected overlapping spans merged into 1 span, got ${laneResult.spans.length}`);
   }
-  if (laneResult.totalLanes < 2) {
-    throw new Error(`Expected at least 2 stacked lanes for overlapping intervals, got ${laneResult.totalLanes}`);
+  if (laneResult.totalLanes !== 1) {
+    throw new Error(`Expected single channel (totalLanes=1), got ${laneResult.totalLanes}`);
   }
-  if (laneResult.spans[0].lane === laneResult.spans[1].lane) {
-    throw new Error(`Overlapping spans were placed in the same lane: lane 0 = ${laneResult.spans[0].lane}, lane 1 = ${laneResult.spans[1].lane}`);
+  if (laneResult.spans[0].lane !== 0) {
+    throw new Error(`Expected merged span in lane 0, got lane ${laneResult.spans[0].lane}`);
+  }
+  // Verify mergedProcessIds contains both process IDs
+  const mergedIds = laneResult.spans[0].mergedProcessIds;
+  if (!mergedIds || mergedIds.length !== 2 || !mergedIds.includes(1) || !mergedIds.includes(2)) {
+    throw new Error(`Expected mergedProcessIds=[1,2], got ${JSON.stringify(mergedIds)}`);
   }
 
   // 15. TACTICAL SPECTRUM: In-place DOM Synchronization for Spans (Anti-Flickering Verification)
@@ -303,8 +309,9 @@ export function runTriggerGaugeVerification(): boolean {
     const mockContainer = document.createElement('div');
     manager.syncSpansDom(mockContainer, laneResult.spans, 6, 0.00260);
     const initialElements = Array.from(mockContainer.children);
-    if (initialElements.length !== 2) {
-      throw new Error(`Expected 2 elements in syncSpansDom, got ${initialElements.length}`);
+    // Now only 1 element (merged span)
+    if (initialElements.length !== 1) {
+      throw new Error(`Expected 1 element in syncSpansDom (merged), got ${initialElements.length}`);
     }
     const firstEl = initialElements[0];
 

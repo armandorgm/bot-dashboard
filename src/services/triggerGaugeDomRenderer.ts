@@ -645,8 +645,11 @@ export class TriggerGaugeDomRenderer {
     `;
   }
 
-  public getSpanTooltipText(span: ProcessRangeSpan, decimals: number, _marketPrice?: number): string {
-    return `Proceso #${span.processId} (${span.side})\nEstado: ${span.status}\nInicio: $${formatNum(span.startPrice, decimals)}\nDestino: $${formatNum(span.endPrice, decimals)}\nCantidad: ${span.amount}`;
+        public getSpanTooltipText(span: ProcessRangeSpan, decimals: number, _marketPrice?: number): string {
+    const procLabel = span.mergedProcessIds && span.mergedProcessIds.length > 1
+      ? `Procesos [${span.mergedProcessIds.map((id) => `#${id}`).join(', ')}] (fusionado)`
+      : `Proceso #${span.processId}`;
+    return `${procLabel} (${span.side})\nEstado: ${span.status}\nInicio: $${formatNum(span.startPrice, decimals)}\nDestino: $${formatNum(span.endPrice, decimals)}\nCantidad: ${span.amount}`;
   }
 
   public getGapTooltipHtml(gap: TacticalProcessGap, decimals: number, marketPrice?: number): string {

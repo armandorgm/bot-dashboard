@@ -121,9 +121,11 @@ export interface ProcessRangeSpan {
   xLeft: number;
   xRight: number;
   widthPc: number;
-  lane: number;
+    lane: number;
   label: string;
   subLabel: string;
+  /** IDs de procesos fusionados en este span (cuando se eliminó la escalera). */
+  mergedProcessIds?: number[];
 }
 
 export interface TacticalProcessGap {
