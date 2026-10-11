@@ -1,7 +1,67 @@
 import { TriggerGaugeManager } from './triggerGaugeManager';
+import { computeSpanTopPx, STAGGER, STAGGER_TRACK_HEIGHT_PX } from './triggerGaugeMath';
 
 export function runTriggerGaugeVerification(): boolean {
   const manager = new TriggerGaugeManager();
+
+  // 0. STAGGER GEOMETRY: single band, no 24px lanes
+  //
+  // Regression guard: the vertical position must be driven ONLY by yOffsetPx.
+  // An earlier version computed `top = 6 + lane * 24 + yOffsetPx`, which turned
+  // every stacking level into its own 24px lane and stretched the track.
+  if (STAGGER.TOP_BASE_PX !== 6) {
+    throw new Error(`Expected TOP_BASE_PX=6, got ${STAGGER.TOP_BASE_PX}`);
+  }
+  if (STAGGER.Y_OFFSET_PX <= 0 || STAGGER.Y_OFFSET_PX >= STAGGER.SPAN_HEIGHT_PX) {
+    throw new Error(`Expected 0 < Y_OFFSET_PX < SPAN_HEIGHT_PX (${STAGGER.SPAN_HEIGHT_PX}), got ${STAGGER.Y_OFFSET_PX}`);
+  }
+  // The track must fit the worst case: base + max offset + span height + margin
+  const expectedTrackHeight =
+    STAGGER.TOP_BASE_PX + STAGGER.MAX_LEVELS * STAGGER.Y_OFFSET_PX + STAGGER.SPAN_HEIGHT_PX + STAGGER.BOTTOM_MARGIN_PX;
+  if (STAGGER_TRACK_HEIGHT_PX !== expectedTrackHeight) {
+    throw new Error(`Expected track height ${expectedTrackHeight}, got ${STAGGER_TRACK_HEIGHT_PX}`);
+  }
+  if (STAGGER_TRACK_HEIGHT_PX <= STAGGER.TOP_BASE_PX + STAGGER.SPAN_HEIGHT_PX) {
+    throw new Error(`Track height ${STAGGER_TRACK_HEIGHT_PX} does not leave room for one span`);
+  }
+
+  // A base span and the deepest stacked span must differ by exactly MAX_LEVELS * Y_OFFSET_PX,
+  // NOT by MAX_LEVELS * 24 (which is what the old lane arithmetic produced).
+  const deepStaggered = STAGGER.TOP_BASE_PX + STAGGER.MAX_LEVELS * STAGGER.Y_OFFSET_PX;
+  const oldLaneArithmetic = STAGGER.TOP_BASE_PX + STAGGER.MAX_LEVELS * 24;
+  if (deepStaggered >= oldLaneArithmetic) {
+    throw new Error(`Stagger would still look like lanes: offset ${deepStaggered}px vs lane arithmetic ${oldLaneArithmetic}px`);
+  }
+
+  // computeSpanTopPx must ignore `lane` entirely
+  const fakeSpan: any = {
+    id: 'geom-probe',
+    processId: 0,
+    side: 'BUY',
+    startPrice: 1,
+    endPrice: 1,
+    minPrice: 1,
+    maxPrice: 1,
+    status: 'CHASING',
+    amount: 0,
+    xStart: 0,
+    xEnd: 0,
+    xLeft: 0,
+    xRight: 0,
+    widthPc: 0,
+    lane: 4,
+    yOffsetPx: 0,
+    label: '',
+    subLabel: '',
+  };
+  if (computeSpanTopPx(fakeSpan) !== STAGGER.TOP_BASE_PX) {
+    throw new Error(`computeSpanTopPx must ignore lane: lane=4,yOffset=0 gave ${computeSpanTopPx(fakeSpan)}, expected ${STAGGER.TOP_BASE_PX}`);
+  }
+  fakeSpan.lane = 0;
+  fakeSpan.yOffsetPx = STAGGER.MAX_LEVELS * STAGGER.Y_OFFSET_PX;
+  if (computeSpanTopPx(fakeSpan) !== deepStaggered) {
+    throw new Error(`computeSpanTopPx must follow yOffsetPx: got ${computeSpanTopPx(fakeSpan)}, expected ${deepStaggered}`);
+  }
 
   // 1. TREND_BUY theme check (Emerald Green)
   const trendBuyTheme = manager.getMetricColor(0.3523, 0.75, 'TREND_ACCUMULATION', 'TREND_BUY');
@@ -148,6 +208,7 @@ export function runTriggerGaugeVerification(): boolean {
       xRight: 0,
       widthPc: 0,
       lane: 0,
+      yOffsetPx: 0,
       label: '#101 BUY',
       subLabel: 'CHASING',
     },
@@ -167,6 +228,7 @@ export function runTriggerGaugeVerification(): boolean {
       xRight: 0,
       widthPc: 0,
       lane: 0,
+      yOffsetPx: 0,
       label: '#102 SELL',
       subLabel: 'WAITING_TP_FILL',
     },
@@ -245,7 +307,7 @@ export function runTriggerGaugeVerification(): boolean {
     throw new Error(`Failed sell span extraction: ${JSON.stringify(sellSpan)}`);
   }
 
-  // 14. TACTICAL SPECTRUM: Tiered Lane Assignment (NO Merging / NO Fusion)
+  // 14. TACTICAL SPECTRUM: Tiered Lane Assignment (NO Merging / NO Fusion — Staggered Spans)
   const overlappingSpans = [
     {
       id: 'span-a',
@@ -263,6 +325,7 @@ export function runTriggerGaugeVerification(): boolean {
       xRight: 0,
       widthPc: 0,
       lane: 0,
+      yOffsetPx: 0,
       label: '#1 BUY',
       subLabel: '',
     },
@@ -282,26 +345,38 @@ export function runTriggerGaugeVerification(): boolean {
       xRight: 0,
       widthPc: 0,
       lane: 0,
+      yOffsetPx: 0,
       label: '#2 SELL',
       subLabel: '',
     },
   ];
 
   const laneResult = manager.projectAndAssignLanes(overlappingSpans, 0.00260, 0.00250, 0.00270);
-  // NEW BEHAVIOR: overlapping spans MERGED into single channel (no escalera)
-  if (laneResult.spans.length !== 1) {
-    throw new Error(`Expected overlapping spans merged into 1 span, got ${laneResult.spans.length}`);
+  // NEW BEHAVIOR: overlapping spans remain SEPARATE (staggered vertically), not merged
+  if (laneResult.spans.length !== 2) {
+    throw new Error(`Expected 2 separate spans (staggered), got ${laneResult.spans.length}`);
   }
+  // SINGLE vertical band for every span (no 24px lanes)
   if (laneResult.totalLanes !== 1) {
-    throw new Error(`Expected single channel (totalLanes=1), got ${laneResult.totalLanes}`);
+    throw new Error(`Expected totalLanes=1 (single band), got ${laneResult.totalLanes}`);
   }
-  if (laneResult.spans[0].lane !== 0) {
-    throw new Error(`Expected merged span in lane 0, got lane ${laneResult.spans[0].lane}`);
+  // Both spans must be on distinct stacking levels with distinct Y offsets
+  const [spanA, spanB] = laneResult.spans;
+  if (spanA.lane === spanB.lane) {
+    throw new Error(`Expected overlapping spans on different levels, both got level ${spanA.lane}`);
   }
-  // Verify mergedProcessIds contains both process IDs
-  const mergedIds = laneResult.spans[0].mergedProcessIds;
-  if (!mergedIds || mergedIds.length !== 2 || !mergedIds.includes(1) || !mergedIds.includes(2)) {
-    throw new Error(`Expected mergedProcessIds=[1,2], got ${JSON.stringify(mergedIds)}`);
+  if (spanA.yOffsetPx === spanB.yOffsetPx) {
+    throw new Error(`Expected overlapping spans with different yOffsets, both got ${spanA.yOffsetPx}`);
+  }
+  if (spanA.yOffsetPx < 0 || spanB.yOffsetPx < 0) {
+    throw new Error(`Expected non-negative yOffsetPx, got A=${spanA.yOffsetPx}, B=${spanB.yOffsetPx}`);
+  }
+  // No mergedProcessIds should be populated (spans are separate)
+  if (spanA.mergedProcessIds && spanA.mergedProcessIds.length > 0) {
+    throw new Error(`Expected mergedProcessIds to be empty for separate spans, got ${JSON.stringify(spanA.mergedProcessIds)}`);
+  }
+  if (spanB.mergedProcessIds && spanB.mergedProcessIds.length > 0) {
+    throw new Error(`Expected mergedProcessIds to be empty for separate spans, got ${JSON.stringify(spanB.mergedProcessIds)}`);
   }
 
   // 15. TACTICAL SPECTRUM: In-place DOM Synchronization for Spans (Anti-Flickering Verification)
@@ -309,9 +384,9 @@ export function runTriggerGaugeVerification(): boolean {
     const mockContainer = document.createElement('div');
     manager.syncSpansDom(mockContainer, laneResult.spans, 6, 0.00260);
     const initialElements = Array.from(mockContainer.children);
-    // Now only 1 element (merged span)
-    if (initialElements.length !== 1) {
-      throw new Error(`Expected 1 element in syncSpansDom (merged), got ${initialElements.length}`);
+    // Now 2 elements (separate staggered spans)
+    if (initialElements.length !== 2) {
+      throw new Error(`Expected 2 elements in syncSpansDom (staggered), got ${initialElements.length}`);
     }
     const firstEl = initialElements[0];
 
@@ -327,6 +402,312 @@ export function runTriggerGaugeVerification(): boolean {
       throw new Error('syncSpansDom should not set native title attribute to prevent browser tooltip flickering');
     }
   }
+
+  // 15b. Regression: price-disjoint spans whose X projections overlap must share a lane.
+  //
+  // The logarithmic projection compresses wide viewports (e.g. market $1.13 with
+  // a $1..$109 range) so two spans with completely disjoint PRICE ranges can end
+  // up with overlapping xLeft/xRight. Stacking decisions must be driven by price
+  // intervals, never by the projected X coordinates.
+  const priceDisjointSpans = [
+    {
+      id: 'span-disjoint-a',
+      processId: 501,
+      side: 'BUY' as const,
+      startPrice: 108.0,
+      endPrice: 110.0,
+      minPrice: 108.0,
+      maxPrice: 110.0,
+      status: 'CHASING',
+      amount: 1,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      yOffsetPx: 0,
+      label: '#501 BUY',
+      subLabel: '',
+    },
+    {
+      id: 'span-disjoint-b',
+      processId: 502,
+      side: 'SELL' as const,
+      startPrice: 105.0,
+      endPrice: 107.0,
+      minPrice: 105.0,
+      maxPrice: 107.0,
+      status: 'WAITING_TP_FILL',
+      amount: 1,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      yOffsetPx: 0,
+      label: '#502 SELL',
+      subLabel: '',
+    },
+  ];
+
+  // Viewport identical to the reported screenshot: market $1.1345 with a very wide span
+  const disjointResult = manager.projectAndAssignLanes(priceDisjointSpans, 1.1345, 1.0721, 109.3146);
+  const disjointA = disjointResult.spans.find((s) => s.processId === 501)!;
+  const disjointB = disjointResult.spans.find((s) => s.processId === 502)!;
+  // Prices 105-107 vs 108-110 never touch -> same lane, no vertical stagger
+  if (disjointA.lane !== 0 || disjointB.lane !== 0) {
+    throw new Error(`Expected price-disjoint spans to share lane 0, got ${disjointA.lane} and ${disjointB.lane}`);
+  }
+  if (disjointA.yOffsetPx !== 0 || disjointB.yOffsetPx !== 0) {
+    throw new Error(`Expected price-disjoint spans to have yOffsetPx=0, got ${disjointA.yOffsetPx} and ${disjointB.yOffsetPx}`);
+  }
+  // Sanity: the projection really does squeeze these price-disjoint spans into a
+  // sub-0.3% X window, which is what made the old X-tolerance logic stagger them.
+  const xSeparationPc = disjointB.xLeft - disjointA.xRight;
+  const oldToleranceWouldFlagOverlap = disjointA.xRight >= disjointB.xLeft - 0.3;
+  if (xSeparationPc >= 0.3 || !oldToleranceWouldFlagOverlap) {
+    throw new Error(
+      `Expected price-disjoint spans within 0.3%% X tolerance (bug precondition), got separation ${xSeparationPc}%% with A=[${disjointA.xLeft},${disjointA.xRight}] B=[${disjointB.xLeft},${disjointB.xRight}]`
+    );
+  }
+
+  // 15c. Regression: REAL price overlap still staggers onto different lanes
+  const genuinelyOverlappingSpans = [
+    {
+      id: 'span-ovl-a',
+      processId: 503,
+      side: 'BUY' as const,
+      startPrice: 100.0,
+      endPrice: 106.0,
+      minPrice: 100.0,
+      maxPrice: 106.0,
+      status: 'CHASING',
+      amount: 1,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      yOffsetPx: 0,
+      label: '#503 BUY',
+      subLabel: '',
+    },
+    {
+      id: 'span-ovl-b',
+      processId: 504,
+      side: 'SELL' as const,
+      startPrice: 104.0,
+      endPrice: 108.0,
+      minPrice: 104.0,
+      maxPrice: 108.0,
+      status: 'WAITING_TP_FILL',
+      amount: 1,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      yOffsetPx: 0,
+      label: '#504 SELL',
+      subLabel: '',
+    },
+  ];
+
+  const overlapResult = manager.projectAndAssignLanes(genuinelyOverlappingSpans, 104.0, 100.0, 110.0);
+  const overlapA = overlapResult.spans.find((s) => s.processId === 503)!;
+  const overlapB = overlapResult.spans.find((s) => s.processId === 504)!;
+  // Prices 100-106 vs 104-108 genuinely intersect -> staggered
+  if (overlapA.lane === overlapB.lane) {
+    throw new Error(`Expected price-overlapping spans on different lanes, both got lane ${overlapA.lane}`);
+  }
+
+  // 15d. Regression: adjacent (touching) prices are NOT an overlap
+  const adjacentSpans = [
+    {
+      id: 'span-adj-a',
+      processId: 505,
+      side: 'BUY' as const,
+      startPrice: 100.0,
+      endPrice: 104.0,
+      minPrice: 100.0,
+      maxPrice: 104.0,
+      status: 'CHASING',
+      amount: 1,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      yOffsetPx: 0,
+      label: '#505 BUY',
+      subLabel: '',
+    },
+    {
+      id: 'span-adj-b',
+      processId: 506,
+      side: 'SELL' as const,
+      startPrice: 104.0,
+      endPrice: 108.0,
+      minPrice: 104.0,
+      maxPrice: 108.0,
+      status: 'WAITING_TP_FILL',
+      amount: 1,
+      xStart: 0,
+      xEnd: 0,
+      xLeft: 0,
+      xRight: 0,
+      widthPc: 0,
+      lane: 0,
+      yOffsetPx: 0,
+      label: '#506 SELL',
+      subLabel: '',
+    },
+  ];
+
+  const adjacentResult = manager.projectAndAssignLanes(adjacentSpans, 104.0, 100.0, 110.0);
+  const adjacentA = adjacentResult.spans.find((s) => s.processId === 505)!;
+  const adjacentB = adjacentResult.spans.find((s) => s.processId === 506)!;
+  // Prices touch exactly at 104 (end of one = start of other) -> NOT an overlap
+  if (adjacentA.lane !== 0 || adjacentB.lane !== 0) {
+    throw new Error(`Expected touching spans to share lane 0, got ${adjacentA.lane} and ${adjacentB.lane}`);
+  }
+
+  // 13b. REGRESSION (phantom span): a process with no entry price must NOT fall back
+  // to the live market price. Pipeline #4137 on SUIUSDC (live :8001 instance 1) had
+  // start_price/initial_price/last_order_price all null while target_price=1.0826 and
+  // market=100. The old fallback produced a span [100 -> 1.0826] that blew the viewport
+  // out to pMax~$109 and crushed every real span into a ~9% X band.
+  manager.setPoiSources({
+    getActiveProcesses: () => [
+      {
+        id: 4137,
+        pipeline_id: 1,
+        instance_id: 1,
+        symbol: 'SUIUSDC',
+        status: 'WAITING_EXIT_FILL',
+        sub_status: 'IDLE',
+        side: 'BUY',
+        amount: 4.7,
+                                        target_price: 1.0826,
+        pre_exit_price: 1.0826,
+      },
+    ],
+  });
+
+  const statusForExtract = manager.getSanitizedStatus({
+    instance_id: 1,
+    symbol: 'SUIUSDC',
+    strategy: 'GRID_POSITION_FLIPPER',
+    condition_name: 'PULLBACK_CONMUTATOR',
+    state: 'READY',
+    conmutator_mode: 'SEED',
+    resolved_side: 'BUY',
+    position_side: 'FLAT',
+    entry_price: 100,
+    current_price: 100,
+    trigger_price: 99.48,
+    current_metric_pc: 0,
+    required_metric_pc: 0.52,
+    delta_remaining_pc: 0.52,
+    multiplier: 1,
+  });
+
+  const phantomSpans = manager.getProcessSpans(statusForExtract);
+  if (phantomSpans.length !== 1) {
+    throw new Error(`Expected 1 span for the no-entry process, got ${phantomSpans.length}`);
+  }
+  const phantom = phantomSpans[0];
+  if (phantom.startPrice === 100) {
+    throw new Error('REGRESSION (phantom span): startPrice fell back to the market price 100');
+  }
+  if (phantom.startPrice !== 1.0826 || phantom.endPrice !== 1.0826) {
+    throw new Error(`Expected a point span at the process target 1.0826, got [${phantom.startPrice}..${phantom.endPrice}]`);
+  }
+  if (phantom.maxPrice - phantom.minPrice !== 0) {
+    throw new Error(`Expected degenerate zero-width span, got [${phantom.minPrice}..${phantom.maxPrice}]`);
+  }
+
+  // 13c. REGRESSION: a process WITH a real entry price keeps its real range
+  manager.setPoiSources({
+    getActiveProcesses: () => [
+      {
+        id: 4640,
+        pipeline_id: 1,
+        instance_id: 1,
+        symbol: 'SUIUSDC',
+        status: 'WAITING_EXIT_FILL',
+        sub_status: 'IDLE',
+        side: 'SELL',
+        amount: 4.7,
+        start_price: 1.0833,
+        initial_price: 1.0833,
+        last_order_price: 1.0833,
+                target_price: 1.0778,
+        pre_exit_price: 1.0778,
+      },
+    ],
+  });
+
+  const statusForExtract2 = manager.getSanitizedStatus({
+    instance_id: 1,
+    symbol: 'SUIUSDC',
+    strategy: 'GRID_POSITION_FLIPPER',
+    condition_name: 'PULLBACK_CONMUTATOR',
+    state: 'READY',
+    conmutator_mode: 'SEED',
+    resolved_side: 'BUY',
+    position_side: 'FLAT',
+    entry_price: 1.13,
+    current_price: 1.13,
+    trigger_price: 1.124,
+    current_metric_pc: 0,
+    required_metric_pc: 0.52,
+    delta_remaining_pc: 0.52,
+    multiplier: 1,
+  });
+
+  const realSpans = manager.getProcessSpans(statusForExtract2);
+  if (realSpans.length !== 1) {
+    throw new Error(`Expected 1 span for the real-entry process, got ${realSpans.length}`);
+  }
+  const realSpan = realSpans[0];
+  if (realSpan.startPrice !== 1.0833 || realSpan.endPrice !== 1.0778) {
+    throw new Error(`Expected real entry range [1.0833..1.0778], got [${realSpan.startPrice}..${realSpan.endPrice}]`);
+  }
+
+  // Restore the POI sources that later tests depend on
+  manager.setPoiSources({
+    getActiveProcesses: () => [
+      {
+        id: 42,
+        pipeline_id: 1,
+        symbol: '1000PEPEUSDC',
+        status: 'WAITING_TP_FILL',
+        sub_status: 'TP_PLACED',
+        side: 'BUY',
+        amount: 100000,
+        initial_price: 0.00258,
+        last_order_price: 0.00258,
+        last_tick_price: 0.00261,
+      },
+      {
+        id: 43,
+        pipeline_id: 1,
+        symbol: '1000PEPEUSDC',
+        status: 'CHASING',
+        sub_status: 'CHASING_MARKET',
+        side: 'SELL',
+        amount: 50000,
+        initial_price: 0.00262,
+        last_order_price: 0.00259,
+      },
+    ],
+  });
 
   // 16. TACTICAL SPECTRUM: Rich Floating Tooltip HTML Generation
   const spanHtml = manager.getSpanTooltipHtml(buySpan, 6, 0.00260);
@@ -357,6 +738,7 @@ export function runTriggerGaugeVerification(): boolean {
       xRight: 0,
       widthPc: 0,
       lane: 0,
+      yOffsetPx: 0,
       label: '#10 SELL',
       subLabel: '',
     },
@@ -376,6 +758,7 @@ export function runTriggerGaugeVerification(): boolean {
       xRight: 0,
       widthPc: 0,
       lane: 0,
+      yOffsetPx: 0,
       label: '#11 SELL',
       subLabel: '',
     },
@@ -412,6 +795,7 @@ export function runTriggerGaugeVerification(): boolean {
       xRight: 0,
       widthPc: 0,
       lane: 0,
+      yOffsetPx: 0,
       label: '#20 BUY',
       subLabel: '',
     },
@@ -431,6 +815,7 @@ export function runTriggerGaugeVerification(): boolean {
       xRight: 0,
       widthPc: 0,
       lane: 0,
+      yOffsetPx: 0,
       label: '#21 BUY',
       subLabel: '',
     },
@@ -467,6 +852,7 @@ export function runTriggerGaugeVerification(): boolean {
       xRight: 0,
       widthPc: 0,
       lane: 0,
+      yOffsetPx: 0,
       label: '#30 BUY',
       subLabel: '',
     },
@@ -486,6 +872,7 @@ export function runTriggerGaugeVerification(): boolean {
       xRight: 0,
       widthPc: 0,
       lane: 0,
+      yOffsetPx: 0,
       label: '#31 SELL',
       subLabel: '',
     },
@@ -516,6 +903,7 @@ export function runTriggerGaugeVerification(): boolean {
       xRight: 0,
       widthPc: 0,
       lane: 0,
+      yOffsetPx: 0,
       label: '#40 BUY',
       subLabel: '',
     },
@@ -535,6 +923,7 @@ export function runTriggerGaugeVerification(): boolean {
       xRight: 0,
       widthPc: 0,
       lane: 0,
+      yOffsetPx: 0,
       label: '#41 SELL',
       subLabel: '',
     },
@@ -624,6 +1013,7 @@ export function runTriggerGaugeVerification(): boolean {
     xRight: 55,
     widthPc: 10,
     lane: 0,
+    yOffsetPx: 0,
     label: '#99 BUY',
     subLabel: 'WAITING_EXIT_FILL',
   };
