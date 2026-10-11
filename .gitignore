@@ -22,3 +22,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# Local agent/editor workspace state (per-machine, not project source)
+.kilo/
