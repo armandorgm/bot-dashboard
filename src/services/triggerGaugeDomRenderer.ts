@@ -2,7 +2,14 @@ import { ProcessRangeSpan, StrategyTriggerStatus, TacticalCluster, TacticalProce
 import { formatNum, getSymbolDecimals } from '../utils/formatters';
 import { FRAME_BUDGET_MS } from '../utils/constants';
 import { getConmutatorModeBadgeInfo, getMetricColor, getPoiVisualConfig, getProcessSpanTheme } from './triggerGaugeTheme';
-import { calculateLogCoordinate, calculateProcessGaps, calculateViewportExtrema, projectAndAssignLanes } from './triggerGaugeMath';
+import {
+  calculateLogCoordinate,
+  calculateProcessGaps,
+  calculateViewportExtrema,
+  computeSpanTopPx,
+  projectAndAssignLanes,
+  STAGGER_TRACK_HEIGHT_PX,
+} from './triggerGaugeMath';
 import { tooltipManager } from './tooltipManager';
 
 export class TriggerGaugeDomRenderer {
@@ -76,7 +83,9 @@ export class TriggerGaugeDomRenderer {
 
     // 1. Calculate Viewport Extrema & Project Spans
     const { pMin, pMax } = calculateViewportExtrema(s.current_price, s.trigger_price, rawSpans);
-    const { spans, totalLanes } = projectAndAssignLanes(rawSpans, s.current_price, pMin, pMax);
+    // `totalLanes` is intentionally ignored: the track height comes from the
+    // stagger geometry, never from a lane count.
+    const { spans } = projectAndAssignLanes(rawSpans, s.current_price, pMin, pMax);
     const gaps = calculateProcessGaps(spans, s.current_price, pMin, pMax);
 
     this.currentSpans = spans;
@@ -103,7 +112,9 @@ export class TriggerGaugeDomRenderer {
       statusDetailText = `Acumulando en ${s.position_side} (${s.resolved_side}). A ${s.delta_remaining_pc.toFixed(4)}% de conmutar giro a ${oppositeSide}.`;
     }
 
-    const calculatedTrackHeight = Math.max(38, 14 + Math.max(1, totalLanes) * 24);
+    // Una sola banda vertical: el alto de pista acomoda el peor caso de stagger,
+    // no una multiplicacion por carriles.
+    const calculatedTrackHeight = Math.max(38, STAGGER_TRACK_HEIGHT_PX);
 
     // Fast-path in-place DOM update if elements already exist
     const cardEl = document.getElementById('tg-card');
@@ -497,7 +508,7 @@ export class TriggerGaugeDomRenderer {
     spans.forEach((span) => {
       activeIds.add(span.id);
       const existingEl = existingElements.get(span.id);
-      const topPx = 6 + span.lane * 24;
+      const topPx = computeSpanTopPx(span);
       const spanTheme = getProcessSpanTheme(span.side, span.status, span.isVirtualExit);
 
       if (existingEl) {
@@ -646,10 +657,7 @@ export class TriggerGaugeDomRenderer {
   }
 
         public getSpanTooltipText(span: ProcessRangeSpan, decimals: number, _marketPrice?: number): string {
-    const procLabel = span.mergedProcessIds && span.mergedProcessIds.length > 1
-      ? `Procesos [${span.mergedProcessIds.map((id) => `#${id}`).join(', ')}] (fusionado)`
-      : `Proceso #${span.processId}`;
-    return `${procLabel} (${span.side})\nEstado: ${span.status}\nInicio: $${formatNum(span.startPrice, decimals)}\nDestino: $${formatNum(span.endPrice, decimals)}\nCantidad: ${span.amount}`;
+    return `Proceso #${span.processId} (${span.side})\nEstado: ${span.status}\nInicio: $${formatNum(span.startPrice, decimals)}\nDestino: $${formatNum(span.endPrice, decimals)}\nCantidad: ${span.amount}`;
   }
 
   public getGapTooltipHtml(gap: TacticalProcessGap, decimals: number, marketPrice?: number): string {
