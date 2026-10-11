@@ -1,5 +1,4 @@
 import { ProcessRangeSpan, TacticalCluster, TacticalPOI, TacticalProcessGap } from '../types';
-import { formatNum } from '../utils/formatters';
 
 /**
  * Pure Mathematical & Geometric Projection Engine for the Tactical Price Spectrum.
@@ -104,22 +103,62 @@ export function calculateLogCoordinate(
 }
 
 /**
- * Project Spans to X coordinates and assign to a SINGLE channel/lane.
+ * Geometria del stagger de process spans.
  *
- * Fix: Anteriormente usaba un algoritmo greedy "NO MERGING" que creaba un nuevo
- * lane por cada overlap → escalera visual (escalada acumulativa de 24px por lane).
+ * Los spans NO se reparten en carriles de 24px: todos comparten UNA unica banda
+ * vertical y los solapamientos de precio se resuelven con un desfase Y fijo por
+ * nivel de apilamiento. `span.lane` conserva el nivel asignado (informativo),
+ * pero el posicionamiento vertical depende EXCLUSIVAMENTE de `yOffsetPx`.
  *
- * Nueva estrategia (elimina la escalera):
+ * `STAGGER_TRACK_HEIGHT_PX` es el alto de pista que acomoda el peor caso
+ * (MAX_LEVELS desfases + alto del span + margen superior e inferior).
+ */
+export const STAGGER = {
+  /** Nivel maximo de apilamiento (los niveles utiles son 0..MAX_LEVELS). */
+  MAX_LEVELS: 4,
+  /** Desfase vertical por nivel de apilamiento, en px. */
+  Y_OFFSET_PX: 6,
+  /** Separacion vertical base desde el borde superior del track. */
+  TOP_BASE_PX: 6,
+  /** Alto del span; debe coincidir con .tactical-process-span en styles.css. */
+  SPAN_HEIGHT_PX: 20,
+  /** Margen inferior del track. */
+  BOTTOM_MARGIN_PX: 8,
+} as const;
+
+/** Alto de pista que garantiza que el peor caso de stagger quepa completo. */
+export const STAGGER_TRACK_HEIGHT_PX =
+  STAGGER.TOP_BASE_PX + STAGGER.MAX_LEVELS * STAGGER.Y_OFFSET_PX + STAGGER.SPAN_HEIGHT_PX + STAGGER.BOTTOM_MARGIN_PX;
+
+/**
+ * Posicion vertical (top) de un span dentro del track.
+ *
+ * Unica fuente de verdad de la geometria vertical: NO multiplica por el alto de
+ * carril, solo suma el desfase por nivel. Dos spans que solapan en precio
+ * quedan en la misma banda, distinguidos unicamente por este offset.
+ */
+export function computeSpanTopPx(span: ProcessRangeSpan): number {
+  return STAGGER.TOP_BASE_PX + (span.yOffsetPx || 0);
+}
+
+/**
+ * Staggered Stacking for overlapping Process Spans.
+ *
+ * Estrategia (reemplaza la fusion por barras union):
  *   1. Proyecta cada span a coordenadas X (igual que antes).
- *   2. Ordena por xLeft ascendente.
- *   3. FUSIÓN de spans solapados → un único span unión por cada tramo superpuesto.
- *      Los spans fusionados preservan todos sus processId en `mergedProcessIds`.
- *   4. Todos los spans (fusionados o no) se asignan a lane 0.
+ *   2. Ordena por xLeft ascendente (wider spans first on ties).
+ *   3. Para cada span, busca el primer nivel de apilamiento (0..MAX_LEVELS)
+ *      donde NO se solape en PRECIO con ningun span ya asignado.
+ *   4. Si ningun nivel esta libre, asigna al nivel con menos spans (desbordamiento).
+ *   5. Cada nivel recibe un desfase vertical fijo en px (STAGGER.Y_OFFSET_PX),
+ *      NUNCA un carril propio de 24px.
  *
  * Garantiza:
- *   - El precio de entrada y salida de un mismo proceso permanecen en el MISMO nivel.
- *   - No se crea una escalera (un solo canal vertical).
- *   - No se crean múltiples canales.
+ *   - Cada proceso se renderiza como un span independiente (no fusionado).
+ *   - Una sola banda vertical: totalLanes = 1.
+ *   - El solapamiento visual se acota a MAX_LEVELS niveles (sin escalera infinita).
+ *   - El criterio de apilamiento usa el rango de PRECIOS, no la proyeccion X
+ *     logaritmica (que comprime rangos amplios y provoca solapes ficticios).
  */
 export function projectAndAssignLanes(
   spans: ProcessRangeSpan[],
@@ -136,62 +175,77 @@ export function projectAndAssignLanes(
     span.xLeft = Math.min(span.xStart, span.xEnd);
     span.xRight = Math.max(span.xStart, span.xEnd);
     span.widthPc = Math.max(3.0, span.xRight - span.xLeft);
+    span.yOffsetPx = 0;
   });
 
   // 2. Sort by xLeft ascending (if equal, wider spans first)
-  spans.sort((a, b) => a.xLeft - b.xLeft || (b.xRight - b.xLeft) - (a.xRight - a.xLeft));
+  spans.sort((a, b) => a.xLeft - b.xLeft || (b.xRight - a.xLeft) - (a.xRight - a.xLeft));
 
-  // 3. Merge overlapping spans into unions (eliminates escalera)
-  const merged: ProcessRangeSpan[] = [];
+  // 3. Staggered stacking (una sola banda vertical, sin carriles de 24px)
+  const MAX_LEVELS = STAGGER.MAX_LEVELS;
+  const Y_OFFSET_PX = STAGGER.Y_OFFSET_PX;
+  const PRICE_OVERLAP_EPSILON = 1e-9;
 
-  // Gap threshold in X% to consider two spans as "separated" (no merge)
-  const MERGE_GAP_TOLERANCE_PC = 0.3;
+  // Levels store the spans assigned to each stacking level
+  const levels: ProcessRangeSpan[][] = Array.from({ length: MAX_LEVELS + 1 }, () => []);
 
   for (const span of spans) {
-    const existing =
-      merged.length > 0 &&
-      // Overlap check: existing.xRight > span.xLeft - tolerance
-      merged[merged.length - 1].xRight >= span.xLeft - MERGE_GAP_TOLERANCE_PC
-        ? merged[merged.length - 1]
-        : null;
+    let assignedLevel: number | null = null;
 
-    if (existing) {
-      // Extend the union span
-      existing.xLeft = Math.min(existing.xLeft, span.xLeft);
-      existing.xRight = Math.max(existing.xRight, span.xRight);
-      existing.widthPc = Math.max(3.0, existing.xRight - existing.xLeft);
-      existing.minPrice = Math.min(existing.minPrice, span.minPrice);
-      existing.maxPrice = Math.max(existing.maxPrice, span.maxPrice);
-      existing.startPrice = Math.min(existing.startPrice, span.startPrice);
-      existing.endPrice = Math.max(existing.endPrice, span.endPrice);
-      existing.amount += span.amount || 0;
+    // Price bounds of the current span (direction-agnostic: startPrice may be > endPrice)
+    const spanMinPrice = Math.min(span.startPrice, span.endPrice);
+    const spanMaxPrice = Math.max(span.startPrice, span.endPrice);
 
-      // Track merged process IDs
-      if (!existing.mergedProcessIds) {
-        existing.mergedProcessIds = [existing.processId];
+    // Find first free level (no PRICE overlap with any span already in that level).
+    //
+    // NOTE: The overlap decision MUST use raw price intervals, NOT the projected
+    // X coordinates. The logarithmic projection compresses wide price ranges
+    // (e.g. a $1..$109 viewport) into very small X ranges on one side of the
+    // center, so spans with completely disjoint prices end up with overlapping
+    // xLeft/xRight and get wrongly pushed onto different lanes. Testing the
+    // prices directly reflects the user's intent: "spans that don't overlap in
+    // price stay on the same lane".
+    for (let lvl = 0; lvl <= MAX_LEVELS; lvl++) {
+      const levelSpans = levels[lvl];
+      const hasOverlap = levelSpans.some((existing) => {
+        const existingMinPrice = Math.min(existing.startPrice, existing.endPrice);
+        const existingMaxPrice = Math.max(existing.startPrice, existing.endPrice);
+        // Overlap iff the price intervals intersect (touching edges do NOT overlap)
+        return (
+          existingMaxPrice > spanMinPrice + PRICE_OVERLAP_EPSILON &&
+          spanMaxPrice > existingMinPrice + PRICE_OVERLAP_EPSILON
+        );
+      });
+      if (!hasOverlap) {
+        assignedLevel = lvl;
+        break;
       }
-      if (span.mergedProcessIds) {
-        existing.mergedProcessIds.push(...span.mergedProcessIds);
-      } else {
-        existing.mergedProcessIds.push(span.processId);
-      }
-
-      // Update label: combine all process IDs
-      const procIds = Array.from(new Set(existing.mergedProcessIds));
-      existing.label = procIds.map((id) => `#${id} ${existing.side}`).join(' + ');
-      existing.subLabel = `${existing.status} · $${formatNum(existing.startPrice, 0)} ➔ $${formatNum(existing.endPrice, 0)} | Qty: ${existing.amount}`;
-    } else {
-      // Start a new union span
-      merged.push({ ...span });
     }
+
+    // Overflow: assign to the level with the fewest spans
+    if (assignedLevel === null) {
+      let minCount = Infinity;
+      for (let lvl = 0; lvl <= MAX_LEVELS; lvl++) {
+        if (levels[lvl].length < minCount) {
+          minCount = levels[lvl].length;
+          assignedLevel = lvl;
+        }
+      }
+      // Safety fallback: should never happen since MAX_LEVELS >= 0
+      if (assignedLevel === null) {
+        assignedLevel = 0;
+      }
+    }
+
+    // Assign to the chosen level. `lane` is informational only: the vertical
+    // position is driven solely by `yOffsetPx` (see computeSpanTopPx).
+    levels[assignedLevel].push(span);
+    span.lane = assignedLevel;
+    span.yOffsetPx = assignedLevel * Y_OFFSET_PX;
   }
 
-  // 4. Assign ALL spans to lane 0 (single channel — no escalera)
-  merged.forEach((span) => {
-    span.lane = 0;
-  });
-
-  return { spans: merged, totalLanes: 1 };
+  // 4. Single vertical band for every span (no 24px lanes)
+  return { spans, totalLanes: 1 };
 }
 
 /**

@@ -136,9 +136,18 @@ export function extractProcessSpans(
       )
       .forEach((p) => {
         const side: 'BUY' | 'SELL' = (p.side || 'BUY').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
-        const startPrice = Number(p.start_price || p.initial_price || p.last_order_price || s.current_price || 0);
         const targetPrice = Number(p.target_price || p.pre_exit_price || p.chase_target_price || 0);
-        const endPrice = targetPrice > 0 ? targetPrice : Number(p.last_order_price || p.last_tick_price || startPrice);
+        const entryPrice = Number(p.start_price || p.initial_price || p.last_order_price || 0);
+        const observedPrice = Number(p.last_tick_price || p.last_order_price || 0);
+
+        // FIX (phantom span): never fall back to `s.current_price` for the start
+        // price. A process that has lost its entry price would otherwise produce a
+        // span stretching from the live market price down to its real target
+        // (e.g. $100 -> $1.0826), which single-handedly blows up the viewport
+        // extrema and crushes every other span into a sub-1% X band. Prefer the
+        // process's own target so such a span degrades to a point at its true price.
+        const startPrice = entryPrice > 0 ? entryPrice : targetPrice > 0 ? targetPrice : observedPrice;
+        const endPrice = targetPrice > 0 ? targetPrice : entryPrice > 0 ? entryPrice : observedPrice;
 
         if (startPrice > 0 && endPrice > 0) {
           const minPrice = Math.min(startPrice, endPrice);
@@ -173,6 +182,7 @@ export function extractProcessSpans(
             xRight: 0,
             widthPc: 0,
             lane: 0,
+            yOffsetPx: 0,
             label: `#${p.id} ${side}`,
             subLabel: `${p.status} · $${formatNum(startPrice, decimals)} ➔ $${formatNum(
               endPrice,

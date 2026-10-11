@@ -122,9 +122,10 @@ export interface ProcessRangeSpan {
   xRight: number;
   widthPc: number;
     lane: number;
+    yOffsetPx: number;
   label: string;
   subLabel: string;
-  /** IDs de procesos fusionados en este span (cuando se eliminó la escalera). */
+  /** IDs de procesos fusionados en este span (compatibilidad; ya no se pobló). */
   mergedProcessIds?: number[];
 }
 
